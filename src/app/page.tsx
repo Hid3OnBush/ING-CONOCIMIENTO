@@ -114,7 +114,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#071411] text-slate-100">
       <header className="border-b border-white/10">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-5 lg:px-10">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-5 px-6 py-5 lg:px-10">
           <Link
             href="/"
             aria-label="Natura Go, inicio"
@@ -134,12 +134,38 @@ export default function Home() {
             </span>
           </Link>
 
-          <Link
-            href="/login"
-            className="rounded-full border border-white/15 px-5 py-2.5 text-sm font-medium transition hover:border-emerald-300/40 hover:bg-emerald-300/10 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-300"
+          <nav
+            aria-label="Navegación principal"
+            className="flex flex-wrap items-center gap-2"
           >
-            Mi cuenta
-          </Link>
+            <Link
+              href="/identificar"
+              className="rounded-full px-4 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-white/5 hover:text-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-300"
+            >
+              Subir fotografía
+            </Link>
+
+            <Link
+              href="/historial"
+              className="rounded-full px-4 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-white/5 hover:text-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-300"
+            >
+              Mi historial
+            </Link>
+
+            <Link
+              href="/perfil"
+              className="rounded-full px-4 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-white/5 hover:text-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-300"
+            >
+              Mi perfil
+            </Link>
+
+            <Link
+              href="/login"
+              className="rounded-full border border-white/15 px-5 py-2.5 text-sm font-medium transition hover:border-emerald-300/40 hover:bg-emerald-300/10 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-300"
+            >
+              Mi cuenta
+            </Link>
+          </nav>
         </div>
       </header>
 
@@ -170,13 +196,28 @@ export default function Home() {
               clasificación.
             </p>
 
+          <div className="mt-8 flex flex-wrap gap-3">
             <a
               href="#catalogo"
-              className="mt-8 inline-flex items-center gap-3 rounded-full bg-emerald-300 px-6 py-3.5 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-300"
+              className="inline-flex items-center gap-3 rounded-full bg-emerald-300 px-6 py-3.5 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-300"
             >
               Explorar especies
               <span aria-hidden="true">↓</span>
             </a>
+
+            <Link
+              href="/identificar"
+              className="inline-flex items-center gap-3 rounded-full border border-emerald-300/25 bg-emerald-300/5 px-6 py-3.5 text-sm font-semibold text-emerald-100 transition hover:border-emerald-300/50 hover:bg-emerald-300/10 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-300"
+            >
+              Subir fotografía
+              <span aria-hidden="true">↗</span>
+            </Link>
+          </div>
+
+          <p className="mt-4 max-w-lg text-xs leading-6 text-slate-500">
+            Puedes guardar fotografías en tu cuenta. El reconocimiento de especies
+            todavía está en desarrollo.
+          </p>
           </div>
 
           <figure className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[#10241b]">
