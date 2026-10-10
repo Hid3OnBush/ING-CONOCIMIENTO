@@ -24,7 +24,7 @@ export async function GET() {
     const { data, count, error } = await acceso.supabase
       .from("especies")
       .select(
-        "id, nombre_comun, nombre_cientifico, tipo, activa",
+        "id, nombre_comun, nombre_cientifico, tipo, descripcion, habitat, activa",
         { count: "exact" }
       )
       .order("nombre_comun", { ascending: true })
