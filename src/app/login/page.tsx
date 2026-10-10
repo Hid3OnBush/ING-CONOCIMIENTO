@@ -382,10 +382,20 @@ export default function LoginPage() {
                 </form>
 
                 <div className="mt-8 border-t border-white/10 pt-5">
-                  <p className="text-center text-xs leading-5 text-slate-500">
-                    CONNECTED BY NATURE.
-                  </p>
-                </div>
+                <p className="text-center text-sm text-slate-400">
+                  ¿Todavía no tienes cuenta?{" "}
+                  <Link
+                    href="/registro"
+                    className="font-medium text-emerald-300 hover:underline"
+                  >
+                    Regístrate
+                  </Link>
+                </p>
+
+                <p className="mt-4 text-center text-xs leading-5 text-slate-500">
+                  CONNECTED BY NATURE.
+                </p>
+              </div>
               </>
             )}
 
