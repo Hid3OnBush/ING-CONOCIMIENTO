@@ -396,7 +396,7 @@ function Tarjeta({ especie }: { especie: Especie }) {
   );
 
   return (
-    <article className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.025] transition hover:border-emerald-300/30">
+    <article className="overflow-hidden rounded-3xl border border-white/10 bg-white/2.5 transition hover:border-emerald-300/30">
       <Link
         href={`/especies/${especie.id}`}
         target="_blank"
