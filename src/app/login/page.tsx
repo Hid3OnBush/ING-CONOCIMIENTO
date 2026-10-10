@@ -265,6 +265,12 @@ export default function LoginPage() {
                 <p className="mt-3 break-all rounded-2xl border border-white/10 bg-black/10 p-4 text-sm text-emerald-100">
                   {correoUsuario}
                 </p>
+                <Link
+                  href="/perfil"
+                  className="mt-6 flex w-full items-center justify-center rounded-2xl border border-emerald-300/25 px-5 py-3.5 text-sm font-medium text-emerald-200 transition hover:bg-emerald-300/10"
+                >
+                  Ver mi perfil
+                </Link>
 
                 <button
                   type="button"
