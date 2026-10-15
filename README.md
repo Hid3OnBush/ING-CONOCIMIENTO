@@ -167,9 +167,16 @@ para el modelo propio como para iNaturalist:
 
 `fuente` es `modelo_puebla` o `inaturalist`; cuando una especie de iNaturalist no
 existe en el catálogo, la ruta consulta iNaturalist Taxa y Wikipedia en español
-para completar la ficha y su `imagen_url`. Los datos que sigan sin estar
-disponibles conservan `null`. La ficha enriquecida se guarda como inactiva para
+para completar la ficha y su `imagen_url`, además de GBIF para taxonomía,
+distribución y estado de conservación. La ficha externa muestra las mismas
+secciones del catálogo; cuando las fuentes abiertas no publican un dato se
+indica que no se encontró información, sin atribuir valores no verificados.
+Los datos que sigan sin estar disponibles conservan `null`. La ficha enriquecida se guarda como inactiva para
 revisión; por ello, su `id` sigue siendo `null` hasta que se active en el catálogo.
+El resultado de iNaturalist incluye `taxon_id`; la interfaz usa ese dato para
+mostrar “Ver detalles de la especie” y abrir una ficha externa con su descripción,
+imagen, taxonomía y estado de conservación, aunque todavía no tenga una ficha
+activa en Supabase.
 `confianza` usa el rango 0–1. Para el modelo propio corresponde a su confianza
 normalizada; para iNaturalist se deriva de `combined_score` (o
 `vision_score` como alternativa) dividido entre 100. La interfaz muestra este

@@ -99,6 +99,10 @@ function esFichaEspecie(
 
   return (
     (valor.id === null || typeof valor.id === "string") &&
+    (valor.taxon_id === null ||
+      (typeof valor.taxon_id === "number" &&
+        Number.isSafeInteger(valor.taxon_id) &&
+        valor.taxon_id > 0)) &&
     typeof valor.nombre_comun === "string" &&
     typeof valor.nombre_cientifico === "string" &&
     (valor.tipo === null ||
@@ -902,6 +906,16 @@ export default function IdentificarPage() {
                               Ver ficha completa
                             </Link>
                           )}
+                          {!reconocimiento.especie.id &&
+                            reconocimiento.fuente === "inaturalist" &&
+                            reconocimiento.especie.taxon_id && (
+                              <Link
+                                href={`/especies/inaturalist/${reconocimiento.especie.taxon_id}?nombre=${encodeURIComponent(reconocimiento.especie.nombre_cientifico)}`}
+                                className="mt-4 inline-flex text-sm font-medium text-emerald-200 underline-offset-4 hover:underline"
+                              >
+                                Ver detalles de la especie
+                              </Link>
+                            )}
                         </>
                       )}
                       {!reconocimiento?.especie && reconocimiento && (

@@ -74,6 +74,7 @@ function crearFicha(
 ): FichaEspecieReconocida {
   return {
     id: especie.activa === false ? null : String(especie.id),
+    taxon_id: null,
     nombre_comun: especie.nombre_comun,
     nombre_cientifico: especie.nombre_cientifico,
     tipo: especie.tipo,
@@ -330,6 +331,10 @@ function crearFichaExterna(
 
   return {
     id: null,
+    taxon_id:
+      typeof taxon.id === "number" && Number.isSafeInteger(taxon.id)
+        ? taxon.id
+        : null,
     nombre_comun:
       texto(taxon.preferred_common_name) ??
       texto(taxon.name) ??
