@@ -210,10 +210,10 @@ export default function LoginPage() {
                   Nuestro punto de partida
                 </p>
                 <p className="mt-2 text-lg font-medium">
-                  20 especies. Un entorno por conocer.
+                  Catálogo regional. Un entorno por conocer.
                 </p>
                 <p className="mt-1 text-xs text-slate-400">
-                  Plantas y animales en el catálogo inicial
+                  Plantas y animales representativos de la región.
                 </p>
               </div>
             </div>
@@ -421,8 +421,7 @@ export default function LoginPage() {
         </div>
 
         <footer className="flex flex-col gap-2 border-t border-white/5 py-6 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-          <p>EXPLORE. IDENTIFY. PROTECT.</p>
-          <p>WHERE NATURE MEETS TECHNOLOGY</p>
+          <p>EXPLORA. IDENTIFICA. PROTEGE.</p>
         </footer>
       </div>
     </main>

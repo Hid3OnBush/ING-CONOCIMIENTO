@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { textoPlano } from "@/lib/texto-plano";
 
 type ImagenEspecie = {
   id: number;
@@ -23,16 +24,10 @@ type Especie = {
   imagenes_especies: ImagenEspecie[];
 } & Record<string, unknown>;
 
-function texto(valor: unknown) {
-  return typeof valor === "string" && valor.trim()
-    ? valor
-    : "Información pendiente.";
-}
-
 function indicador(valor: unknown) {
   if (valor === true) return "Sí";
   if (valor === false) return "No";
-  return "Pendiente";
+  return null;
 }
 
 export default function PaginaEspecie() {
@@ -119,7 +114,23 @@ function FichaEspecie({ id }: { id: string }) {
         ["Familia", especie.familia],
         ["Género", especie.genero],
         ["Especie", especie.especie_taxonomica],
-      ]
+      ].filter(([, valor]) => textoPlano(valor) !== null)
+    : [];
+  const riesgos = especie
+    ? [
+        ["Peligrosa", especie.peligrosa],
+        ["Tóxica", especie.toxica],
+        ["Venenosa", especie.venenosa],
+        ["Protegida", especie.protegida],
+      ].filter(([, valor]) => typeof valor === "boolean")
+    : [];
+  const nivelRiesgo = textoPlano(especie?.nivel_riesgo);
+  const estadoConservacion = textoPlano(especie?.estado_conservacion);
+  const fuentePrincipal = textoPlano(especie?.fuente_principal);
+  const notasSeguridad = Array.isArray(especie?.notas_seguridad)
+    ? especie.notas_seguridad
+        .map(textoPlano)
+        .filter((nota): nota is string => Boolean(nota))
     : [];
 
   function reintentar() {
@@ -267,7 +278,8 @@ function FichaEspecie({ id }: { id: string }) {
                 aria-label="Clasificación y conservación"
                 className="space-y-6"
               >
-                <section className="rounded-3xl border border-white/10 bg-white/[0.025] p-6">
+                {taxonomia.length > 0 && (
+                  <section className="rounded-3xl border border-white/10 bg-white/[0.025] p-6">
                   <p className="text-[10px] uppercase tracking-[0.25em] text-emerald-300">
                     Identidad biológica
                   </p>
@@ -286,14 +298,19 @@ function FichaEspecie({ id }: { id: string }) {
                           {String(etiqueta)}
                         </dt>
                         <dd className="break-words text-slate-200">
-                          {texto(valor)}
+                          {textoPlano(valor)}
                         </dd>
                       </div>
                     ))}
                   </dl>
-                </section>
+                  </section>
+                )}
 
-                <section className="rounded-3xl border border-white/10 bg-white/[0.025] p-6">
+                {(riesgos.length > 0 ||
+                  nivelRiesgo ||
+                  estadoConservacion ||
+                  notasSeguridad.length > 0) && (
+                  <section className="rounded-3xl border border-white/10 bg-white/[0.025] p-6">
                   <p className="text-[10px] uppercase tracking-[0.25em] text-emerald-300">
                     Información registrada
                   </p>
@@ -303,12 +320,7 @@ function FichaEspecie({ id }: { id: string }) {
                   </h2>
 
                   <dl className="mt-5 grid grid-cols-2 gap-3">
-                    {[
-                      ["Peligrosa", especie.peligrosa],
-                      ["Tóxica", especie.toxica],
-                      ["Venenosa", especie.venenosa],
-                      ["Protegida", especie.protegida],
-                    ].map(([etiqueta, valor]) => (
+                    {riesgos.map(([etiqueta, valor]) => (
                       <div
                         key={String(etiqueta)}
                         className="rounded-2xl border border-white/10 bg-black/10 p-4"
@@ -323,34 +335,50 @@ function FichaEspecie({ id }: { id: string }) {
                     ))}
                   </dl>
 
-                  <div className="mt-5 space-y-4 border-t border-white/10 pt-5">
-                    <div>
+                  {notasSeguridad.length > 0 && (
+                    <ul className="mt-5 space-y-2 border-t border-white/10 pt-5 text-sm leading-6 text-amber-100/80">
+                      {notasSeguridad.map((nota) => (
+                        <li key={nota}>{nota}</li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {(nivelRiesgo || estadoConservacion) && (
+                    <div className="mt-5 space-y-4 border-t border-white/10 pt-5">
+                    {nivelRiesgo && (
+                      <div>
                       <h3 className="text-xs font-medium text-slate-500">
                         Nivel de riesgo
                       </h3>
                       <p className="mt-2 text-sm leading-6 text-slate-300">
-                        {texto(especie.nivel_riesgo)}
+                        {nivelRiesgo}
                       </p>
-                    </div>
+                      </div>
+                    )}
 
-                    <div>
+                    {estadoConservacion && (
+                      <div>
                       <h3 className="text-xs font-medium text-slate-500">
                         Estado de conservación
                       </h3>
                       <p className="mt-2 text-sm leading-6 text-slate-300">
-                        {texto(especie.estado_conservacion)}
+                        {estadoConservacion}
                       </p>
+                      </div>
+                    )}
                     </div>
-                  </div>
-                </section>
+                  )}
+                  </section>
+                )}
 
-                <section className="rounded-3xl border border-emerald-300/15 bg-emerald-300/[0.04] p-6">
+                {(fuentePrincipal || textoPlano(especie.fuente_url)) && (
+                  <section className="rounded-3xl border border-emerald-300/15 bg-emerald-300/[0.04] p-6">
                   <h2 className="text-lg font-semibold">
                     Fuente de información
                   </h2>
 
                   <p className="mt-3 text-sm leading-6 text-slate-400">
-                    {texto(especie.fuente_principal)}
+                    {fuentePrincipal}
                   </p>
 
                   {typeof especie.fuente_url === "string" &&
@@ -364,7 +392,8 @@ function FichaEspecie({ id }: { id: string }) {
                         Consultar fuente original ↗
                       </a>
                     )}
-                </section>
+                  </section>
+                )}
               </aside>
             </div>
           </>
@@ -387,6 +416,11 @@ function Bloque({
   valor: unknown;
   amplio?: boolean;
 }) {
+  const contenido = textoPlano(valor);
+  if (!contenido) {
+    return null;
+  }
+
   return (
     <section
       className={`rounded-3xl border border-white/10 bg-white/[0.025] p-6 ${
@@ -395,7 +429,7 @@ function Bloque({
     >
       <h2 className="text-lg font-semibold tracking-tight">{titulo}</h2>
       <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-400">
-        {texto(valor)}
+        {contenido}
       </p>
     </section>
   );

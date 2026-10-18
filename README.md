@@ -62,7 +62,8 @@ desarrollo, y el gestor de secretos del hosting en producción):
 ```dotenv
 PUEBLA_MODEL_URL=https://tu-servicio-privado.example/api/identify
 PUEBLA_MODEL_API_KEY=secreto-del-servicio
-INATURALIST_API_TOKEN=token-de-api-de-inaturalist
+INATURALIST_OAUTH_ACCESS_TOKEN=token-oauth-de-inaturalist
+SUPABASE_SERVICE_ROLE_KEY=clave-service-role-de-supabase
 ```
 
 `PUEBLA_MODEL_URL` es opcional: sin ella, la aplicación usa iNaturalist. Cuando
@@ -80,12 +81,34 @@ el ID o nombre científico exacto de una especie del catálogo:
 ```
 
 El endpoint Computer Vision de iNaturalist también requiere autenticación.
-`INATURALIST_API_TOKEN` debe ser un token de API válido de iNaturalist y se
-envía sólo desde el servidor en el encabezado `Authorization`. No es la clave
-de Supabase ni debe exponerse con el prefijo `NEXT_PUBLIC_`. Si no se dispone
-de un token autorizado para ese endpoint, el fallback de iNaturalist no estará
-disponible; para plantas se puede integrar un proveedor que entregue una API
-key propia, y para fauna se debe elegir un servicio compatible y autorizado.
+La opción recomendada es configurar `INATURALIST_OAUTH_ACCESS_TOKEN`, obtenido
+una vez al registrar la aplicación Natura Go en [iNaturalist](https://www.inaturalist.org/oauth/applications/new)
+y autorizarla mediante [OAuth Authorization Code](https://www.inaturalist.org/pages/api+reference#auth).
+Guarda el `access_token` OAuth resultante en esa variable del servidor. En cada
+identificación, el servidor lo envía a `GET
+https://www.inaturalist.org/users/api_token` para obtener un JWT de Computer
+Vision nuevo; así no hay que reemplazar manualmente el JWT de 24 horas. La
+configuración actual de iNaturalist deja sin expiración los tokens OAuth de
+acceso, pero pueden revocarse; si la autorización deja de ser válida, vuelve a
+autorizar la aplicación y actualiza el valor.
+
+`INATURALIST_API_TOKEN` sigue aceptándose como modo legado, pero es el JWT
+temporal que vence a las 24 horas y debe sustituirse por OAuth para evitar la
+renovación diaria. Ambos valores son secretos: guárdalos sólo en `.env.local` o
+en las variables privadas del hosting, nunca en el navegador ni con prefijo
+`NEXT_PUBLIC_`. No compartas el contenido de `.env.local`.
+
+El endpoint de reconocimiento valida primero la sesión, el perfil activo y la
+propiedad de la identificación con el cliente del usuario. Después usa
+`SUPABASE_SERVICE_ROLE_KEY`, exclusivamente en el servidor, para guardar la
+ficha externa enriquecida, sus predicciones y el resultado. Esta clave omite
+RLS: no la agregues a código cliente, no uses el prefijo `NEXT_PUBLIC_` y no
+devuelvas el cliente de servicio desde una API. Configúrala como variable
+privada en el entorno de desarrollo y hosting.
+
+Para dar los permisos SQL mínimos que necesita ese flujo, aplica la migración
+`supabase/migrations/20261017000200_service_role_identification_writes.sql`
+en el proyecto Supabase (por ejemplo, desde SQL Editor o con Supabase CLI).
 
 Para mantener el modelo separado de la aplicación web, se recomienda alojarlo
 como un servicio Python/FastAPI independiente, con el artefacto versionado fuera
@@ -187,3 +210,19 @@ Una respuesta sin coincidencias válidas lleva `identificada: false`,
 `confianza: null` y `especie: null`. Los errores de ambos servicios no se
 convierten en una clasificación falsa: se devuelve error y la identificación
 queda reintentable desde la pantalla.
+
+### Historial y exploración abierta
+
+La portada permite buscar taxones de especie en iNaturalist sin limitarse al
+catálogo regional de Supabase. El historial ofrece filtros, ordenamiento,
+detalle privado de la identificación y eliminación del archivo del bucket.
+Las rutas de detalle y eliminación verifican sesión, perfil activo y propiedad
+de la identificación.
+
+Antes de desplegar estas funciones, aplica en el SQL Editor de Supabase la
+migración
+[`supabase/migrations/20261017000100_resultado_detalles_identificaciones.sql`](./supabase/migrations/20261017000100_resultado_detalles_identificaciones.sql).
+Añade `resultado_detalles` para guardar la ficha técnica como snapshot JSONB;
+las identificaciones nuevas guardarán el resultado completo. Los registros
+anteriores pueden mostrar la especie desde el catálogo cuando exista, pero no
+es posible reconstruir los detalles externos que nunca se persistieron.

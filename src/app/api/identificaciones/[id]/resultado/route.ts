@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { crearClienteServidor } from "@/lib/supabase/servidor";
+import { crearClienteServicio } from "@/lib/supabase/servicio";
 import {
   BUCKET_IDENTIFICACIONES,
   validarArchivoImagen,
@@ -146,7 +147,7 @@ async function consultarModeloPuebla(
   bytes: ArrayBuffer,
   mime: string
 ): Promise<Record<string, unknown> | null> {
-  const endpoint = process.env.PUEBLA_MODEL_URL;
+  const endpoint = process.env.PUEBLA_MODEL_URL?.trim();
 
   if (!endpoint) {
     return null;
@@ -156,6 +157,17 @@ async function consultarModeloPuebla(
 
   if (url.protocol !== "https:" && url.protocol !== "http:") {
     throw new Error("PUEBLA_MODEL_URL debe usar HTTP o HTTPS.");
+  }
+
+  if (
+    url.hostname === "tu-servicio" ||
+    url.hostname === "example.com" ||
+    url.hostname === "localhost"
+  ) {
+    console.warn(
+      "PUEBLA_MODEL_URL todavía apunta a un host de ejemplo; se usará iNaturalist."
+    );
+    return null;
   }
 
   const archivo = new Blob([bytes], { type: mime });
@@ -223,11 +235,57 @@ async function consultarINaturalist(
   bytes: ArrayBuffer,
   mime: string
 ): Promise<Array<{ taxon: TaxonExterno; score: number }>> {
-  const apiToken = process.env.INATURALIST_API_TOKEN?.trim();
+  const oauthAccessToken =
+    process.env.INATURALIST_OAUTH_ACCESS_TOKEN?.trim();
+  const apiTokenAnterior = process.env.INATURALIST_API_TOKEN?.trim();
+
+  if (!oauthAccessToken && !apiTokenAnterior) {
+    throw new Error(
+      "Falta configurar INATURALIST_OAUTH_ACCESS_TOKEN para renovar automáticamente el token de iNaturalist."
+    );
+  }
+
+  let apiToken = apiTokenAnterior;
+
+  if (oauthAccessToken) {
+    const respuestaToken = await fetch(
+      "https://www.inaturalist.org/users/api_token",
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${oauthAccessToken}`,
+          Accept: "application/json",
+        },
+        cache: "no-store",
+        redirect: "manual",
+        signal: AbortSignal.timeout(10000),
+      }
+    );
+
+    if (!respuestaToken.ok || respuestaToken.redirected) {
+      await respuestaToken.body?.cancel();
+      throw new Error(
+        `iNaturalist no pudo renovar el token de Computer Vision (HTTP ${respuestaToken.status}). Reautoriza la aplicación de Natura Go.`
+      );
+    }
+
+    const datosToken: unknown = await respuestaToken.json();
+    if (
+      !esRegistro(datosToken) ||
+      typeof datosToken.api_token !== "string" ||
+      !datosToken.api_token.trim()
+    ) {
+      throw new Error(
+        "iNaturalist devolvió una respuesta de autenticación no válida."
+      );
+    }
+
+    apiToken = datosToken.api_token.trim();
+  }
 
   if (!apiToken) {
     throw new Error(
-      "Falta configurar INATURALIST_API_TOKEN para usar la API de visión de iNaturalist."
+      "iNaturalist no proporcionó un token para Computer Vision."
     );
   }
 
@@ -254,9 +312,14 @@ async function consultarINaturalist(
   if (!respuesta.ok) {
     const cuerpo = await respuesta.text();
     const detalle = cuerpo.match(/<pre>([^<]+)<\/pre>/i)?.[1];
-    if (respuesta.status === 401 || respuesta.status === 403) {
+    if (respuesta.status === 401) {
       throw new Error(
-        `iNaturalist rechazó INATURALIST_API_TOKEN (HTTP ${respuesta.status}).`
+        "iNaturalist rechazó INATURALIST_API_TOKEN (HTTP 401). El token es inválido o expiró; los JWT de iNaturalist vencen a las 24 horas y deben renovarse."
+      );
+    }
+    if (respuesta.status === 403) {
+      throw new Error(
+        "iNaturalist no autorizó el acceso a Computer Vision (HTTP 403). Verifica los permisos de la cuenta y del token."
       );
     }
     throw new Error(
@@ -372,6 +435,7 @@ function crearFichaExterna(
 
 async function crearResultadoExterno(
   supabase: Awaited<ReturnType<typeof crearClienteServidor>>,
+  supabaseServicio: ReturnType<typeof crearClienteServicio>,
   candidatos: Array<{ taxon: TaxonExterno; score: number }>,
   usuarioId: string
 ): Promise<ResultadoReconocimiento> {
@@ -431,7 +495,7 @@ async function crearResultadoExterno(
         principal.especie.nombre_cientifico
       );
       const almacenada = await guardarEspecieEnSupabase(
-        supabase,
+        supabaseServicio,
         enriquecida,
         usuarioId
       );
@@ -527,6 +591,8 @@ export async function POST(
     if (!identificacion) {
       return responder({ error: "No se encontró la identificación." }, 404);
     }
+
+    const supabaseServicio = crearClienteServicio();
 
     const rutaPermitida = new RegExp(
       `^${user.id}/${id}\\.(jpg|png|webp)$`,
@@ -634,6 +700,7 @@ export async function POST(
         );
         resultado = await crearResultadoExterno(
           supabase,
+          supabaseServicio,
           candidatos,
           user.id
         );
@@ -643,7 +710,7 @@ export async function POST(
           describirErrorIntegracion(errorExterno)
         );
 
-        const { error: errorEstado } = await supabase
+        const { error: errorEstado } = await supabaseServicio
           .from("identificaciones")
           .update({
             estado: "ERROR",
@@ -653,10 +720,12 @@ export async function POST(
           .eq("id", id)
           .eq("usuario_id", user.id);
         if (errorEstado) {
-          console.error(
-            "No se pudo registrar el fallo del proveedor:",
-            errorEstado.code
-          );
+          console.error("No se pudo registrar el fallo del proveedor:", {
+            code: errorEstado.code,
+            message: errorEstado.message,
+            details: errorEstado.details,
+            hint: errorEstado.hint,
+          });
         }
 
         return responder(
@@ -678,35 +747,51 @@ export async function POST(
         confianza: alternativa.confianza,
         posicion: posicion + 1,
       }));
+    let advertenciaPredicciones: string | null = null;
 
-    const { error: errorBorrado } = await supabase
+    const { error: errorBorrado } = await supabaseServicio
       .from("predicciones")
       .delete()
       .eq("identificacion_id", id);
 
     if (errorBorrado) {
-      console.error("Error al reemplazar predicciones:", errorBorrado.code);
-      throw new Error("No se pudieron guardar las predicciones.");
-    }
-
-    if (predicciones.length > 0) {
-      const { error: errorPredicciones } = await supabase
+      console.error("Error al reemplazar predicciones:", {
+        code: errorBorrado.code,
+        message: errorBorrado.message,
+        details: errorBorrado.details,
+        hint: errorBorrado.hint,
+      });
+      advertenciaPredicciones =
+        "La identificación se completó, pero no se pudieron actualizar las alternativas.";
+    } else if (predicciones.length > 0) {
+      const { error: errorPredicciones } = await supabaseServicio
         .from("predicciones")
         .insert(predicciones);
 
       if (errorPredicciones) {
-        console.error("Error al guardar predicciones:", errorPredicciones.code);
-        throw new Error("No se pudieron guardar las predicciones.");
+        console.error("Error al guardar predicciones:", {
+          code: errorPredicciones.code,
+          message: errorPredicciones.message,
+          details: errorPredicciones.details,
+          hint: errorPredicciones.hint,
+        });
+        advertenciaPredicciones =
+          "La identificación se completó, pero no se pudieron guardar las alternativas.";
       }
     }
 
-    const { error: errorActualizacion } = await supabase
+    const mensajeResultado = advertenciaPredicciones
+      ? `${resultado.mensaje} ${advertenciaPredicciones}`
+      : resultado.mensaje;
+
+    const { error: errorActualizacion } = await supabaseServicio
       .from("identificaciones")
       .update({
         estado: "COMPLETADA",
         especie_resultado_id: resultado.especie?.id ?? null,
         confianza: resultado.confianza,
-        mensaje_resultado: resultado.mensaje,
+        mensaje_resultado: mensajeResultado,
+        resultado_detalles: resultado.especie,
         error_mensaje: null,
         updated_at: new Date().toISOString(),
       })
@@ -714,11 +799,19 @@ export async function POST(
       .eq("usuario_id", user.id);
 
     if (errorActualizacion) {
-      console.error("Error al guardar el resultado:", errorActualizacion.code);
+      console.error("Error al guardar el resultado:", {
+        code: errorActualizacion.code,
+        message: errorActualizacion.message,
+        details: errorActualizacion.details,
+        hint: errorActualizacion.hint,
+      });
       throw new Error("No se pudo guardar el resultado del reconocimiento.");
     }
 
-    return responder({ identificacion: { id, estado: "COMPLETADA" }, resultado });
+    return responder({
+      identificacion: { id, estado: "COMPLETADA" },
+      resultado: { ...resultado, mensaje: mensajeResultado },
+    });
   } catch (error) {
     console.error(
       "Error en POST /api/identificaciones/[id]/resultado:",

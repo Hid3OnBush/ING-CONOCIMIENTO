@@ -374,19 +374,68 @@ export async function GET(request: Request) {
     const porPagina = 12;
     const desde = (pagina - 1) * porPagina;
 
-    const { data, count, error } = await supabase
+    const estadoFiltro = parametros.get("estado") ?? "todas";
+    if (
+      estadoFiltro !== "todas" &&
+      estadoFiltro !== "completadas" &&
+      estadoFiltro !== "pendientes"
+    ) {
+      return responder(
+        { error: "El filtro de estado no es válido." },
+        400
+      );
+    }
+
+    const orden = parametros.get("orden") ?? "recientes";
+    if (orden !== "recientes" && orden !== "antiguas") {
+      return responder({ error: "El orden no es válido." }, 400);
+    }
+
+    const buscar = (parametros.get("buscar") ?? "")
+      .normalize("NFC")
+      .trim()
+      .replace(/\s+/g, " ");
+    if (
+      buscar.length > 100 ||
+      (buscar && !/^[\p{L}\p{M}\p{N} '-]+$/u.test(buscar))
+    ) {
+      return responder(
+        { error: "La búsqueda contiene caracteres no permitidos." },
+        400
+      );
+    }
+
+    let consulta = supabase
       .from("identificaciones")
       .select(
-        "id, estado, imagen_url, created_at",
+        "id, estado, imagen_url, created_at, resultado_detalles",
         { count: "exact" }
       )
-      .eq("usuario_id", user.id)
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
+      .eq("usuario_id", user.id);
+
+    if (estadoFiltro === "completadas") {
+      consulta = consulta.eq("estado", "COMPLETADA");
+    } else if (estadoFiltro === "pendientes") {
+      consulta = consulta.in("estado", ["PENDIENTE", "PROCESANDO", "ERROR"]);
+    }
+
+    if (buscar) {
+      consulta = consulta.or(
+        `resultado_detalles->>nombre_comun.ilike.%${buscar}%,resultado_detalles->>nombre_cientifico.ilike.%${buscar}%`
+      );
+    }
+
+    const { data, count, error } = await consulta
+      .order("created_at", { ascending: orden === "antiguas" })
+      .order("id", { ascending: orden === "antiguas" })
       .range(desde, desde + porPagina - 1);
 
     if (error) {
-      console.error("Error al consultar historial:", error.code);
+      console.error(
+        "Error al consultar historial:",
+        error.code,
+        error.message
+      );
 
       return responder(
         { error: "No se pudo consultar tu historial." },
@@ -435,6 +484,13 @@ export async function GET(request: Request) {
       estado: registro.estado,
       created_at: registro.created_at,
       imagen_temporal_url: enlaces.get(registro.imagen_url) ?? null,
+      nombre_comun:
+        typeof registro.resultado_detalles === "object" &&
+        registro.resultado_detalles !== null &&
+        !Array.isArray(registro.resultado_detalles) &&
+        typeof registro.resultado_detalles.nombre_comun === "string"
+          ? registro.resultado_detalles.nombre_comun
+          : null,
     }));
 
     const faltanImagenes = identificaciones.some(

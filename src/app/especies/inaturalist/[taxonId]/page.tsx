@@ -1,20 +1,17 @@
 import Image from "next/image";
 import Link from "next/link";
 import { obtenerDetallesEspecieExterna } from "@/lib/identificaciones/enriquecerEspecie";
+import { textoPlano } from "@/lib/texto-plano";
 
 type Contexto = {
   params: Promise<{ taxonId: string }>;
   searchParams: Promise<{ nombre?: string | string[] }>;
 };
 
-function texto(valor: string | null) {
-  return valor || "No se encontró información en las fuentes consultadas.";
-}
-
 function indicador(valor: boolean | null) {
   if (valor === true) return "Sí";
   if (valor === false) return "No";
-  return "Sin datos publicados";
+  return null;
 }
 
 export default async function PaginaEspecieINaturalist({
@@ -69,7 +66,7 @@ export default async function PaginaEspecieINaturalist({
         ["Familia", especie.taxonomia.familia],
         ["Género", especie.taxonomia.genero],
         ["Especie", especie.taxonomia.especie],
-      ]
+      ].filter(([, valor]) => textoPlano(valor) !== null)
     : [];
   const riesgos: Array<[string, boolean | null]> = especie
     ? [
@@ -77,8 +74,16 @@ export default async function PaginaEspecieINaturalist({
         ["Tóxica", especie.toxica],
         ["Venenosa", especie.venenosa],
         ["Protegida", especie.protegida],
-      ]
+      ].filter(
+        (riesgo): riesgo is [string, boolean] =>
+          typeof riesgo[1] === "boolean"
+      )
     : [];
+  const riesgoTexto = especie ? textoPlano(especie.nivel_riesgo) : null;
+  const estadoConservacion = especie
+    ? textoPlano(especie.estado_conservacion)
+    : null;
+  const notasSeguridad = especie?.notas_seguridad ?? [];
 
   return (
     <main className="min-h-screen bg-[#071411] text-slate-100">
@@ -181,7 +186,8 @@ export default async function PaginaEspecieINaturalist({
                 aria-label="Clasificación y conservación"
                 className="space-y-6"
               >
-                <section className="rounded-3xl border border-white/10 bg-white/[0.025] p-6">
+                {taxonomia.length > 0 && (
+                  <section className="rounded-3xl border border-white/10 bg-white/[0.025] p-6">
                   <p className="text-[10px] uppercase tracking-[0.25em] text-emerald-300">
                     Identidad biológica
                   </p>
@@ -196,14 +202,19 @@ export default async function PaginaEspecieINaturalist({
                       >
                         <dt className="text-slate-500">{etiqueta}</dt>
                         <dd className="break-words text-slate-200">
-                          {texto(valor)}
+                          {textoPlano(valor)}
                         </dd>
                       </div>
                     ))}
                   </dl>
-                </section>
+                  </section>
+                )}
 
-                <section className="rounded-3xl border border-white/10 bg-white/[0.025] p-6">
+                {(riesgos.length > 0 ||
+                  riesgoTexto ||
+                  estadoConservacion ||
+                  notasSeguridad.length > 0) && (
+                  <section className="rounded-3xl border border-white/10 bg-white/[0.025] p-6">
                   <p className="text-[10px] uppercase tracking-[0.25em] text-emerald-300">
                     Información registrada
                   </p>
@@ -225,25 +236,39 @@ export default async function PaginaEspecieINaturalist({
                       </div>
                     ))}
                   </dl>
-                  <div className="mt-5 space-y-4 border-t border-white/10 pt-5">
-                    <div>
+                  {notasSeguridad.length > 0 && (
+                    <ul className="mt-5 space-y-2 border-t border-white/10 pt-5 text-sm leading-6 text-amber-100/80">
+                      {notasSeguridad.map((nota) => (
+                        <li key={nota}>{nota}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {(riesgoTexto || estadoConservacion) && (
+                    <div className="mt-5 space-y-4 border-t border-white/10 pt-5">
+                    {riesgoTexto && (
+                      <div>
                       <h3 className="text-xs font-medium text-slate-500">
                         Nivel de riesgo
                       </h3>
                       <p className="mt-2 text-sm leading-6 text-slate-300">
-                        {texto(especie.nivel_riesgo)}
+                        {riesgoTexto}
                       </p>
-                    </div>
-                    <div>
+                      </div>
+                    )}
+                    {estadoConservacion && (
+                      <div>
                       <h3 className="text-xs font-medium text-slate-500">
                         Estado de conservación
                       </h3>
                       <p className="mt-2 text-sm leading-6 text-slate-300">
-                        {texto(especie.estado_conservacion)}
+                        {estadoConservacion}
                       </p>
+                      </div>
+                    )}
                     </div>
-                  </div>
-                </section>
+                  )}
+                  </section>
+                )}
 
                 <section className="rounded-3xl border border-white/10 bg-white/[0.025] p-6">
                   <p className="text-[10px] uppercase tracking-[0.25em] text-emerald-300">
@@ -255,8 +280,10 @@ export default async function PaginaEspecieINaturalist({
                   <p className="mt-3 text-sm leading-6 text-slate-400">
                     Datos taxonómicos e imagen proporcionados por iNaturalist.
                     La descripción puede incluir información de Wikipedia en
-                    español. La distribución y el estado de conservación
-                    también pueden incluir registros de GBIF.
+                    español y Wikidata. La distribución y el estado de
+                    conservación también pueden incluir registros de GBIF.
+                    Las advertencias de seguridad sólo se muestran cuando las
+                    fuentes consultadas mencionan esos riesgos.
                   </p>
                   <a
                     href={`https://www.inaturalist.org/taxa/${taxonId}`}
@@ -285,6 +312,11 @@ function Bloque({
   valor: string | null;
   amplio?: boolean;
 }) {
+  const contenido = textoPlano(valor);
+  if (!contenido) {
+    return null;
+  }
+
   return (
     <section
       className={`rounded-3xl border border-white/10 bg-white/[0.025] p-6 ${
@@ -293,7 +325,7 @@ function Bloque({
     >
       <h2 className="text-lg font-semibold tracking-tight">{titulo}</h2>
       <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-400">
-        {texto(valor)}
+        {contenido}
       </p>
     </section>
   );

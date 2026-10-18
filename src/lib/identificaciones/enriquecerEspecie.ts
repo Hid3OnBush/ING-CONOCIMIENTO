@@ -1,4 +1,5 @@
 import type { crearClienteServidor } from "@/lib/supabase/servidor";
+import { textoPlano } from "@/lib/texto-plano";
 
 export interface EspecieHomogenea {
   id: string | null;
@@ -18,6 +19,7 @@ export interface EspecieHomogenea {
   toxica: boolean | null;
   venenosa: boolean | null;
   protegida: boolean | null;
+  notas_seguridad?: string[];
   imagen_url: string | null;
   taxonomia: {
     reino: string | null;
@@ -41,9 +43,7 @@ function esRegistro(valor: unknown): valor is Record<string, unknown> {
 }
 
 function texto(valor: unknown): string | null {
-  return typeof valor === "string" && valor.trim()
-    ? valor.trim()
-    : null;
+  return textoPlano(valor);
 }
 
 function urlSegura(valor: unknown): string | null {
@@ -143,6 +143,7 @@ function obtenerSeccionesWikipedia(
   extracto: string
 ): Record<string, string> {
   const contenido: Record<string, string[]> = {
+    descripcion: [],
     caracteristicas: [],
     habitat: [],
     distribucion: [],
@@ -152,17 +153,31 @@ function obtenerSeccionesWikipedia(
     distribucion_habitat: [],
   };
   const encabezados: Record<string, string[]> = {
-    descripcion: ["caracteristicas"],
+    descripcion: ["descripcion"],
+    introduccion: ["descripcion"],
     morfologia: ["caracteristicas"],
     caracteristicas: ["caracteristicas"],
+    "descripcion fisica": ["caracteristicas"],
+    "descripcion botanica": ["caracteristicas"],
     habitat: ["habitat"],
     distribucion: ["distribucion"],
     "distribucion y habitat": ["distribucion_habitat"],
     "habitat y distribucion": ["distribucion_habitat"],
     "distribucion y ecologia": ["distribucion_habitat"],
+    taxonomia: [],
+    etimologia: [],
+    sinonimia: [],
+    referencias: [],
+    bibliografia: [],
+    "enlaces externos": [],
     alimentacion: ["alimentacion"],
     dieta: ["alimentacion"],
     nutricion: ["alimentacion"],
+    usos: ["caracteristicas"],
+    "usos y propiedades": ["caracteristicas"],
+    propiedades: ["caracteristicas"],
+    toxicidad: ["conservacion"],
+    peligrosidad: ["conservacion"],
     fenologia: ["temporada"],
     floracion: ["temporada"],
     reproduccion: ["temporada"],
@@ -170,22 +185,20 @@ function obtenerSeccionesWikipedia(
     "estado de conservacion": ["conservacion"],
     conservacion: ["conservacion"],
   };
-  const introduccion: string[] = [];
-  let seccionesActivas: string[] = [];
-  let antesDelPrimerEncabezado = true;
+  let seccionesActivas = ["descripcion"];
   let parrafoActual: string[] = [];
 
   const guardarParrafo = () => {
-    const parrafo = parrafoActual.join(" ").replace(/\s+/g, " ").trim();
+    const parrafo = limpiarTextoFuente(parrafoActual.join(" "));
     if (!parrafo) {
+      parrafoActual = [];
       return;
     }
 
-    if (antesDelPrimerEncabezado) {
-      introduccion.push(parrafo);
-    }
     for (const seccion of seccionesActivas) {
-      contenido[seccion].push(parrafo);
+      if (seccion in contenido) {
+        contenido[seccion].push(parrafo);
+      }
     }
     parrafoActual = [];
   };
@@ -198,10 +211,9 @@ function obtenerSeccionesWikipedia(
     }
 
     const clave = encabezados[normalizarEtiqueta(lineaLimpia)];
-    if (clave) {
+    if (Object.hasOwn(encabezados, normalizarEtiqueta(lineaLimpia))) {
       guardarParrafo();
-      seccionesActivas = clave;
-      antesDelPrimerEncabezado = false;
+      seccionesActivas = clave ?? [];
       continue;
     }
 
@@ -213,7 +225,6 @@ function obtenerSeccionesWikipedia(
     if (pareceEncabezado) {
       guardarParrafo();
       seccionesActivas = [];
-      antesDelPrimerEncabezado = false;
       continue;
     }
 
@@ -221,106 +232,412 @@ function obtenerSeccionesWikipedia(
   }
   guardarParrafo();
 
-  const frasesDistribucion = contenido.distribucion_habitat
-    .flatMap((parrafo) =>
-      parrafo.split(/(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÑ])/u)
-    )
+  return {
+    descripcion: unirUnicos(contenido.descripcion),
+    caracteristicas: unirUnicos(contenido.caracteristicas),
+    habitat: unirUnicos([
+      ...contenido.habitat,
+      ...contenido.distribucion_habitat,
+    ]),
+    distribucion: unirUnicos(contenido.distribucion),
+    alimentacion: unirUnicos(contenido.alimentacion),
+    temporada: unirUnicos(contenido.temporada),
+    conservacion: unirUnicos(contenido.conservacion),
+  };
+}
+
+function limpiarTextoFuente(valor: string): string | null {
+  const limpio = texto(valor);
+  if (!limpio) {
+    return null;
+  }
+
+  const frases = limpio
+    .split(/(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÑ¿¡])/u)
     .map((frase) => frase.trim())
-    .filter(Boolean);
-  const frasesHabitat = frasesDistribucion.filter((frase) =>
-    /\b(?:habitat|bioma|bosque|matorral|desierto|desertico|valle|prepuna|altitud|altura|crece|vive|se desarrolla|vegetacion|humedal|selva)\b/i.test(
+    .filter(Boolean)
+    .filter((frase) => {
+      const normalizada = normalizarEtiqueta(frase);
+      return !/\b(?:doi:|isbn|issn|pp?\.?\s*\d|vol(?:umen)?\.?\s*\d|revista|journal|bibliografia|referencias|consultado el|recuperado el|descrito por|descrita por|publicado por|nomenclatura|sinonimo de|sinonimia|autoridad taxonomica)\b/i.test(
+        normalizada
+      ) &&
+      !/^\(?[A-ZÁÉÍÓÚÑ][a-záéíóúñ-]+(?:\s+(?:ex|&|and|y)\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ-]+){0,3},?\s+\d{4}\)?\.?$/u.test(
+        frase
+      );
+    });
+
+  return frases.length ? unirUnicos(frases) : null;
+}
+
+function llaveDeduplicacion(valor: string): string {
+  return normalizarEtiqueta(valor)
+    .replace(/[^\p{L}\p{N} ]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function unirUnicos(partes: string[]): string {
+  const vistos = new Set<string>();
+  const unicos: string[] = [];
+
+  for (const parte of partes) {
+    for (const frase of parte.split(/(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÑ¿¡])/u)) {
+      const limpia = texto(frase);
+      if (!limpia) continue;
+      const clave = llaveDeduplicacion(limpia);
+      if (!vistos.has(clave)) {
+        vistos.add(clave);
+        unicos.push(limpia);
+      }
+    }
+  }
+
+  return unicos.join(" ");
+}
+
+function extraerFrases(textoFuente: string): string[] {
+  return unirUnicos([textoFuente])
+    .split(/(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÑ¿¡])/u)
+    .map((frase) => limpiarTextoFuente(frase))
+    .filter((frase): frase is string => Boolean(frase));
+}
+
+function extraerDatosDeTexto(textoFuente: string): {
+  habitat: string | null;
+  distribucion: string | null;
+  caracteristicas: string | null;
+} {
+  const frases = extraerFrases(textoFuente);
+  const esDistribucion = (frase: string) =>
+    /\b(?:distribu(?:ye|ida|ido|cion)|nativ[oa] de|originari[oa] de|endemica de|endemico de|se encuentra en|presente en|habita en|argentina|bolivia|brasil|chile|colombia|ecuador|estados unidos|mexico|peru|paraguay|uruguay|sudamerica|norte de|sur de|centro de)\b/i.test(
       normalizarEtiqueta(frase)
-    )
-  );
-  const frasesRango = frasesDistribucion.filter((frase) =>
-    /\b(?:distribucion|distribuye|nativa|nativo|endemica|endemico|localiza|localizado|se encuentra|presente en|originaria|originario|bolivia|argentina|brasil|chile|ecuador|peru|paraguay|uruguay|sudamerica)\b/i.test(
+    );
+  const esHabitat = (frase: string) =>
+    /\b(?:habitat|bioma|bosque|matorral|desierto|selva|humedal|zona[s]? rocosas?|pradera|pastizal|sabana|clima (?:templado|tropical|arido|humedo)|vive en|crece en|se desarrolla en|habita en|altitud(?:es)? de)\b/i.test(
       normalizarEtiqueta(frase)
-    )
-  );
-  const distribucionEspecifica = contenido.distribucion.join("\n\n");
-  const habitatEspecifico = contenido.habitat.join("\n\n");
+    );
+  const esCaracteristica = (frase: string) =>
+    /\b(?:alcanza(?:n)? hasta|mide(?:n)? hasta|puede(?:n)? alcanzar|presenta|se caracteriza|tallo[s]?|hoja[s]?|flor(?:es)?|fruto[s]?|espina[s]?|escama[s]?|plumaje|longitud|altura|coloraci[oó]n|morfolog[ií]a|cilindric[oa]s?|globos[oa]s?|blanc[oa]s?|roj[oa]s?|amarill[oa]s?|nocturn[oa]s?)\b/i.test(
+      normalizarEtiqueta(frase)
+    );
+  const distribucion: string[] = [];
+  const habitat: string[] = [];
+  const caracteristicas: string[] = [];
+
+  for (const frase of frases) {
+    if (esDistribucion(frase)) {
+      distribucion.push(frase);
+    } else if (esHabitat(frase)) {
+      habitat.push(frase);
+    } else if (esCaracteristica(frase)) {
+      caracteristicas.push(frase);
+    }
+  }
 
   return {
-    descripcion: introduccion.join("\n\n") || "",
-    caracteristicas: contenido.caracteristicas.join("\n\n"),
-    habitat:
-      habitatEspecifico ||
-      (frasesHabitat.length ? frasesHabitat.join(" ") : ""),
-    distribucion:
-      distribucionEspecifica ||
-      (frasesRango.length ? frasesRango.join(" ") : ""),
-    alimentacion: contenido.alimentacion.join("\n\n"),
-    temporada: contenido.temporada.join("\n\n"),
-    conservacion: contenido.conservacion.join("\n\n"),
+    habitat: habitat.length ? unirUnicos(habitat.slice(0, 3)) : null,
+    distribucion: distribucion.length
+      ? unirUnicos(distribucion.slice(0, 3))
+      : null,
+    caracteristicas: caracteristicas.length
+      ? unirUnicos(caracteristicas.slice(0, 4))
+      : null,
+  };
+}
+
+function filtrarFrases(
+  textoFuente: string,
+  patron: RegExp,
+  maxFrases: number
+): string | null {
+  const frases = extraerFrases(textoFuente).filter((frase) =>
+    patron.test(normalizarEtiqueta(frase))
+  );
+  return frases.length ? unirUnicos(frases.slice(0, maxFrases)) : null;
+}
+
+function construirDescripcion(
+  partes: Array<string | null | undefined>,
+  limite = 250
+): string | null {
+  const frasesVistas = new Set<string>();
+  let descripcion = "";
+  const excluirPorRuido =
+    /\b(?:taxonomia|sinonim|revista|journal|doi|descrito por|descrita por|publicado por|botanico|botanica|autoridad|siglo (?:xviii|xix|xx|xxi))\b/i;
+  const clasificacion = extraerDatosDeTexto(partes.filter(Boolean).join(" "));
+  const camposEspecializados = [
+    clasificacion.caracteristicas,
+    clasificacion.habitat,
+    clasificacion.distribucion,
+  ]
+    .filter((parte): parte is string => Boolean(parte))
+    .flatMap(extraerFrases)
+    .map(llaveDeduplicacion);
+
+  for (const parte of partes) {
+    for (const frase of extraerFrases(parte ?? "")) {
+      const clave = llaveDeduplicacion(frase);
+      if (
+        frasesVistas.has(clave) ||
+        excluirPorRuido.test(normalizarEtiqueta(frase)) ||
+        camposEspecializados.includes(clave)
+      ) {
+        continue;
+      }
+
+      const candidata = descripcion ? `${descripcion} ${frase}` : frase;
+      if (candidata.length > limite) {
+        continue;
+      }
+
+      frasesVistas.add(clave);
+      descripcion = candidata;
+      if (frasesVistas.size === 3) {
+        return descripcion;
+      }
+    }
+  }
+
+  return descripcion || null;
+}
+
+function consolidarTexto(
+  partes: Array<string | null | undefined>,
+  maxCaracteres = 1800
+): string | null {
+  const vistos = new Set<string>();
+  const seleccionadas: string[] = [];
+
+  for (const parte of partes) {
+    for (const frase of extraerFrases(parte ?? "")) {
+      const clave = llaveDeduplicacion(frase);
+      if (!vistos.has(clave)) {
+        vistos.add(clave);
+        seleccionadas.push(frase);
+      }
+    }
+  }
+
+  let salida = "";
+  for (const frase of seleccionadas) {
+    const candidata = salida ? `${salida} ${frase}` : frase;
+    if (candidata.length > maxCaracteres) {
+      break;
+    }
+    salida = candidata;
+  }
+
+  return salida || null;
+}
+
+function hayNegacionAntes(textoFuente: string, indice: number): boolean {
+  const antes = normalizarEtiqueta(
+    textoFuente.slice(Math.max(0, indice - 45), indice)
+  );
+  return /\b(?:no es|no resulta|no se considera|no presenta|no contiene|carece de|sin evidencia de|no se ha demostrado que sea)\b(?:\s+\w+){0,4}\s*$/i.test(
+    antes
+  );
+}
+
+function detectarSeguridad(textoFuente: string): {
+  peligrosa: boolean | null;
+  toxica: boolean | null;
+  venenosa: boolean | null;
+  protegida: boolean | null;
+  notas: string[];
+} {
+  const notas: string[] = [];
+  const detectar = (patron: RegExp) => {
+    for (const coincidencia of textoFuente.matchAll(patron)) {
+      if (!hayNegacionAntes(textoFuente, coincidencia.index ?? 0)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  const toxica = detectar(
+    /\b(?:t[oó]xic[oa]s?|venen[oa]s?|veneno|irritante[s]?|nociv[oa]s?|psicoactiv[oa]s?|alucin[oó]gen[oa]s?|ingerir(?:la|lo)?\s+(?:es\s+)?peligros[oa])\b/giu
+  );
+  const mencionaAlcaloides = detectar(/\balcaloides?\b/giu);
+  const venenosa = detectar(
+    /\b(?:venen[oa]s?|veneno|veneno[s]? potente[s]?|neurotoxina[s]?)\b/giu
+  );
+  const peligrosa = detectar(
+    /\b(?:espinas? agudas?|mordedura[s]?|picadura[s]?|agresiv[oa]s?|alerg[eé]nic[oa]s?|irritante[s]?|peligro(?:so|sa)s?)\b/giu
+  );
+  const protegida = detectar(
+    /\b(?:especie[s]? protegida[s]?|protegida[s]? por (?:la )?(?:ley|legislaci[oó]n|normativa)|protecci[oó]n legal)\b/giu
+  );
+
+  if (toxica) {
+    notas.push(
+      "La fuente consultada describe toxicidad o efectos nocivos; evita ingerirla o manipularla sin orientación experta."
+    );
+  } else if (mencionaAlcaloides) {
+    notas.push(
+      "La fuente menciona alcaloides; su presencia no determina por sí sola el riesgo ni la dosis peligrosa."
+    );
+  }
+  if (venenosa) {
+    notas.push(
+      "La fuente menciona veneno o sustancias venenosas; evita el contacto directo."
+    );
+  }
+  if (peligrosa && !toxica) {
+    notas.push(
+      "La fuente menciona un posible riesgo físico o alergénico; mantén distancia y consulta una fuente especializada."
+    );
+  }
+  if (protegida) {
+    notas.push(
+      "La fuente indica protección legal; verifica la normativa local antes de manipular o recolectar ejemplares."
+    );
+  }
+
+  return {
+    peligrosa: peligrosa || toxica ? true : null,
+    toxica: toxica || mencionaAlcaloides ? true : null,
+    venenosa: venenosa ? true : null,
+    protegida: protegida ? true : null,
+    notas,
   };
 }
 
 async function consultarWikipedia(
   scientificName: string
 ): Promise<Record<string, unknown> | null> {
-  const busquedaUrl = new URL("https://es.wikipedia.org/w/api.php");
-  busquedaUrl.search = new URLSearchParams({
-    action: "query",
-    list: "search",
-    srsearch: `"${scientificName}"`,
-    srnamespace: "0",
-    srlimit: "5",
-    format: "json",
-    utf8: "1",
-  }).toString();
-
-  const respuestaBusqueda = await consultarApi(
-    busquedaUrl.toString(),
-    "la búsqueda de artículos de Wikipedia"
+  const nombreLimpio = texto(scientificName) ?? scientificName.trim();
+  const palabrasTaxonomicas = nombreLimpio
+    .replace(/\s*\([^)]*\)\s*/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  const variantesBusqueda = Array.from(
+    new Set([
+      nombreLimpio,
+      palabrasTaxonomicas.slice(0, 2).join(" "),
+    ].filter(Boolean))
   );
-  const query = esRegistro(respuestaBusqueda?.query)
-    ? respuestaBusqueda.query
-    : null;
-  const resultados = Array.isArray(query?.search)
-    ? query.search.filter(esRegistro)
-    : [];
-  const articulo = resultados.find(
-    (resultado) =>
-      typeof resultado.title === "string" &&
-      normalizarEtiqueta(resultado.title) ===
-        normalizarEtiqueta(scientificName)
-  );
-  const titulo = texto(articulo?.title);
 
-  if (!titulo) {
-    return null;
+  for (const variante of variantesBusqueda) {
+    const busquedaUrl = new URL("https://es.wikipedia.org/w/api.php");
+    busquedaUrl.search = new URLSearchParams({
+      action: "query",
+      list: "search",
+      srsearch: `"${variante}"`,
+      srnamespace: "0",
+      srlimit: "5",
+      format: "json",
+      utf8: "1",
+    }).toString();
+
+    const respuestaBusqueda = await consultarApi(
+      busquedaUrl.toString(),
+      "la búsqueda de artículos de Wikipedia"
+    );
+    const query = esRegistro(respuestaBusqueda?.query)
+      ? respuestaBusqueda.query
+      : null;
+    const resultados = Array.isArray(query?.search)
+      ? query.search.filter(esRegistro)
+      : [];
+    const articuloExacto = resultados.find(
+      (resultado) =>
+        typeof resultado.title === "string" &&
+        normalizarEtiqueta(resultado.title) ===
+          normalizarEtiqueta(variante)
+    );
+    const articuloRelacionado = resultados.find((resultado) => {
+      const titulo = texto(resultado.title);
+      const fragmento = texto(resultado.snippet);
+      const nombreNormalizado = normalizarEtiqueta(variante);
+      return Boolean(
+        titulo &&
+          (normalizarEtiqueta(titulo).startsWith(nombreNormalizado) ||
+            (fragmento &&
+              normalizarEtiqueta(fragmento).includes(nombreNormalizado)))
+      );
+    });
+    const articulo = articuloExacto ?? articuloRelacionado;
+    const titulo = texto(articulo?.title);
+
+    if (!titulo) {
+      continue;
+    }
+
+    const articuloUrl = new URL("https://es.wikipedia.org/w/api.php");
+    articuloUrl.search = new URLSearchParams({
+      action: "query",
+      prop: "extracts|pageimages",
+      explaintext: "1",
+      exsectionformat: "plain",
+      piprop: "thumbnail",
+      pithumbsize: "1000",
+      titles: titulo,
+      format: "json",
+      formatversion: "2",
+    }).toString();
+
+    const respuestaArticulo = await consultarApi(
+      articuloUrl.toString(),
+      "el artículo de Wikipedia en español"
+    );
+    const articuloQuery = esRegistro(respuestaArticulo?.query)
+      ? respuestaArticulo.query
+      : null;
+    const paginas = Array.isArray(articuloQuery?.pages)
+      ? articuloQuery.pages.filter(esRegistro)
+      : [];
+    const pagina = paginas.find(
+      (resultado) =>
+        normalizarEtiqueta(texto(resultado.title) ?? "") ===
+        normalizarEtiqueta(titulo)
+    );
+
+    if (pagina) {
+      return pagina;
+    }
   }
 
-  const articuloUrl = new URL("https://es.wikipedia.org/w/api.php");
-  articuloUrl.search = new URLSearchParams({
-    action: "query",
-    prop: "extracts|pageimages",
-    explaintext: "1",
-    exsectionformat: "plain",
-    piprop: "thumbnail",
-    pithumbsize: "1000",
-    titles: titulo,
+  return null;
+}
+
+async function consultarWikidata(
+  scientificName: string
+): Promise<string | null> {
+  const busquedaUrl = new URL(
+    "https://www.wikidata.org/w/api.php"
+  );
+  busquedaUrl.search = new URLSearchParams({
+    action: "wbsearchentities",
+    search: scientificName,
+    language: "es",
+    uselang: "es",
+    type: "item",
+    limit: "5",
     format: "json",
-    formatversion: "2",
   }).toString();
-
-  const respuestaArticulo = await consultarApi(
-    articuloUrl.toString(),
-    "el artículo de Wikipedia en español"
+  const respuesta = await consultarApi(
+    busquedaUrl.toString(),
+    "la búsqueda de taxones en Wikidata"
   );
-  const articuloQuery = esRegistro(respuestaArticulo?.query)
-    ? respuestaArticulo.query
-    : null;
-  const paginas = Array.isArray(articuloQuery?.pages)
-    ? articuloQuery.pages.filter(esRegistro)
+  const resultados = Array.isArray(respuesta?.search)
+    ? respuesta.search.filter(esRegistro)
     : [];
-  const pagina = paginas.find(
-    (resultado) =>
-      normalizarEtiqueta(texto(resultado.title) ?? "") ===
-      normalizarEtiqueta(titulo)
-  );
+  const nombreNormalizado = normalizarEtiqueta(scientificName);
+  const entidad = resultados.find(
+      (resultado) =>
+        normalizarEtiqueta(texto(resultado.label) ?? "") ===
+        nombreNormalizado
+    ) ??
+    resultados.find(
+      (resultado) =>
+        esRegistro(resultado.match) &&
+        normalizarEtiqueta(texto(resultado.match.text) ?? "") ===
+          nombreNormalizado
+    );
+  const descripcion = texto(entidad?.description);
 
-  return pagina ?? null;
+  return descripcion && descripcion.length >= 35 ? descripcion : null;
 }
 
 async function consultarGBIF(
@@ -329,14 +646,28 @@ async function consultarGBIF(
   taxon: Record<string, unknown> | null;
   distribuciones: Record<string, unknown>[];
 }> {
-  const matchUrl = new URL("https://api.gbif.org/v1/species/match");
-  matchUrl.searchParams.set("name", scientificName);
-  matchUrl.searchParams.set("strict", "true");
+  const nombreCanonico = (texto(scientificName) ?? scientificName)
+    .replace(/\s*\([^)]*\)\s*/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(" ");
+  let match: Record<string, unknown> | null = null;
 
-  const match = await consultarApi(
-    matchUrl.toString(),
-    "la API de taxonomía de GBIF"
-  );
+  for (const nombre of Array.from(new Set([scientificName, nombreCanonico]))) {
+    const matchUrl = new URL("https://api.gbif.org/v1/species/match");
+    matchUrl.searchParams.set("name", nombre);
+    matchUrl.searchParams.set("strict", "true");
+
+    match = await consultarApi(
+      matchUrl.toString(),
+      "la API de taxonomía de GBIF"
+    );
+    if (typeof match?.confidence === "number" && match.confidence >= 90) {
+      break;
+    }
+  }
+
   const confidence =
     typeof match?.confidence === "number" ? match.confidence : 0;
   const key =
@@ -452,9 +783,7 @@ function leerDistribucionGBIF(
   }
 
   return nombres.size
-    ? `Registros de distribución reportados por GBIF: ${Array.from(nombres)
-        .slice(0, 8)
-        .join(", ")}.`
+    ? Array.from(nombres).slice(0, 8).join(", ")
     : null;
 }
 
@@ -513,10 +842,16 @@ export async function obtenerDetallesEspecieExterna(
   taxonUrl.searchParams.set("locale", "es");
   taxonUrl.searchParams.append("include[]", "ancestors");
 
-  const [respuestaTaxon, resumenWikipedia, datosGBIF] = await Promise.all([
+  const [
+    respuestaTaxon,
+    resumenWikipedia,
+    datosGBIF,
+    descripcionWikidata,
+  ] = await Promise.all([
     consultarApi(taxonUrl.toString(), "la API de taxa de iNaturalist"),
     consultarWikipedia(scientificName),
     consultarGBIF(scientificName),
+    consultarWikidata(scientificName),
   ]);
 
   const resultadosTaxon = respuestaTaxon?.results;
@@ -530,11 +865,60 @@ export async function obtenerDetallesEspecieExterna(
   const resumenINaturalist = texto(taxon?.wikipedia_summary);
   const extractoWikipedia = texto(resumenWikipedia?.extract) ?? "";
   const seccionesWikipedia = obtenerSeccionesWikipedia(extractoWikipedia);
-  const descripcionWiki =
-    seccionesWikipedia.descripcion || extractoWikipedia || null;
-  const caracteristicasWiki = seccionesWikipedia.caracteristicas || null;
-  const habitatWiki = seccionesWikipedia.habitat || null;
-  const distribucionWiki = seccionesWikipedia.distribucion || null;
+  const extractoCombinado = [extractoWikipedia, resumenINaturalist]
+    .filter((parte): parte is string => Boolean(parte))
+    .join("\n\n");
+  const fuenteDatosTecnicos = [
+    extractoCombinado,
+    seccionesWikipedia.habitat,
+    seccionesWikipedia.distribucion,
+    seccionesWikipedia.distribucion_habitat,
+    seccionesWikipedia.caracteristicas,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  const datosTexto = extraerDatosDeTexto(fuenteDatosTecnicos);
+  const habitatWiki = consolidarTexto(
+    [
+      filtrarFrases(
+        seccionesWikipedia.habitat,
+        /\b(?:habitat|bioma|bosque|matorral|desierto|selva|humedal|zona[s]? rocosas?|pradera|pastizal|sabana|clima|vive en|crece en|se desarrolla en|habita en|altitud)\b/i,
+        3
+      ),
+      datosTexto.habitat,
+    ],
+    450
+  );
+  const caracteristicasWiki = consolidarTexto(
+    [
+      filtrarFrases(
+        seccionesWikipedia.caracteristicas,
+        /\b(?:alcanza|mide|altura|longitud|tallo|hoja|flor|fruto|espina|escama|plumaje|color|morfolog|cilindric|globos|blanc|roj|amarill|nocturn)\w*/i,
+        4
+      ),
+      datosTexto.caracteristicas,
+    ],
+    600
+  );
+  const distribucionWiki = consolidarTexto(
+    [
+      filtrarFrases(
+        seccionesWikipedia.distribucion,
+        /\b(?:distribu|nativ[oa]|originari[oa]|endemica|endemico|se encuentra en|presente en|argentina|bolivia|brasil|chile|colombia|ecuador|estados unidos|mexico|peru|paraguay|uruguay|sudamerica|norte de|sur de|centro de)\b/i,
+        4
+      ),
+      datosTexto.distribucion,
+    ],
+    450
+  );
+  const descripcionConsolidada = construirDescripcion(
+    [
+      seccionesWikipedia.descripcion,
+      resumenINaturalist,
+      descripcionWikidata,
+    ],
+    250
+  );
   const conservacionINaturalist = esRegistro(taxon?.conservation_status)
     ? texto(taxon.conservation_status.status_name) ??
       texto(taxon.conservation_status.name) ??
@@ -545,6 +929,15 @@ export async function obtenerDetallesEspecieExterna(
       ?.threatStatus ?? conservacionINaturalist,
     seccionesWikipedia.conservacion
   );
+  const corpusSeguridad = [
+    extractoWikipedia,
+    resumenINaturalist,
+    descripcionWikidata,
+    seccionesWikipedia.conservacion,
+  ]
+    .filter((parte): parte is string => Boolean(parte))
+    .join("\n");
+  const seguridad = detectarSeguridad(corpusSeguridad);
   const nombreComun = texto(taxon?.preferred_common_name) ?? scientificName;
   const tipo = tipoEspecie(taxon, ancestros);
   const distribucionGBIF = leerDistribucionGBIF(
@@ -583,22 +976,24 @@ export async function obtenerDetallesEspecieExterna(
       texto(taxonGBIF?.canonicalName) ??
       scientificName,
     tipo,
-    descripcion: descripcionWiki ?? resumenINaturalist,
+    descripcion: descripcionConsolidada,
     habitat: habitatWiki,
-    distribucion: distribucionWiki ?? distribucionGBIF,
-    alimentacion:
-      seccionesWikipedia.alimentacion ||
-      (tipo === "PLANTA"
-        ? "Autótrofa: produce nutrientes mediante la fotosíntesis."
-        : null),
-    temporada: seccionesWikipedia.temporada || null,
-    caracteristicas: caracteristicasWiki,
+    distribucion: consolidarTexto(
+      [distribucionWiki, distribucionGBIF],
+      450
+    ),
+    alimentacion: texto(seccionesWikipedia.alimentacion),
+    temporada: texto(seccionesWikipedia.temporada),
+    caracteristicas: texto(caracteristicasWiki),
     nivel_riesgo: estadoConservacion,
     estado_conservacion: estadoConservacion,
-    peligrosa: null,
-    toxica: null,
-    venenosa: null,
-    protegida: null,
+    peligrosa: seguridad.peligrosa,
+    toxica: seguridad.toxica,
+    venenosa: seguridad.venenosa,
+    protegida: seguridad.protegida,
+    ...(seguridad.notas.length
+      ? { notas_seguridad: seguridad.notas }
+      : {}),
     imagen_url:
       urlSegura(foto?.medium_url) ??
       urlSegura(foto?.url) ??
@@ -689,7 +1084,12 @@ export async function guardarEspecieEnSupabase(
 
     console.error(
       "No se pudo guardar la especie enriquecida en Supabase:",
-      errorInsercion.code
+      {
+        code: errorInsercion.code,
+        message: errorInsercion.message,
+        details: errorInsercion.details,
+        hint: errorInsercion.hint,
+      }
     );
     return especie;
   }

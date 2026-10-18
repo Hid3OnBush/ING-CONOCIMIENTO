@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import HeroCarrusel from "@/app/ui/hero-carrusel";
 
 type Tipo = "TODAS" | "PLANTA" | "ANIMAL";
 
@@ -47,7 +48,6 @@ export default function Home() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [intento, setIntento] = useState(0);
-
   useEffect(() => {
     const controlador = new AbortController();
 
@@ -215,62 +215,12 @@ export default function Home() {
           </div>
 
           <p className="mt-4 max-w-lg text-xs leading-6 text-slate-500">
-            Puedes guardar fotografías en tu cuenta. El reconocimiento de especies
-            todavía está en desarrollo.
+          Explora especies del catálogo regional o identifica otras con tu
+          cámara.
           </p>
           </div>
 
-          <figure className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[#10241b]">
-            <div className="relative h-72 sm:h-96">
-              <Image
-                src="https://vauffaiiibqwephxtgal.supabase.co/storage/v1/object/public/especies-referencia/opuntia-ficus-indica/principal.jpg"
-                alt="Nopal de Castilla, Opuntia ficus-indica"
-                fill
-                sizes="(max-width: 1023px) 100vw, 45vw"
-                className="object-cover"
-              />
-
-              <div
-                aria-hidden="true"
-                className="absolute inset-0 bg-gradient-to-t from-[#071411] via-black/10 to-transparent"
-              />
-
-              <div className="absolute bottom-6 left-6 right-6">
-                <span className="rounded-full border border-white/20 bg-black/25 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-emerald-100 backdrop-blur">
-                  Flora
-                </span>
-
-                <p className="mt-3 text-2xl font-semibold">
-                  Nopal de Castilla
-                </p>
-
-                <p className="mt-1 text-sm italic text-emerald-100/75">
-                  Opuntia ficus-indica
-                </p>
-              </div>
-            </div>
-
-            <figcaption className="px-6 py-3 text-xs leading-5 text-slate-400">
-              Foto:{" "}
-              <a
-                href="https://commons.wikimedia.org/wiki/File:Opuntia_ficus-indica_1.jpg"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline underline-offset-4 hover:text-emerald-200"
-              >
-                Stan Shebs
-              </a>
-              {" · "}
-              <a
-                href="https://creativecommons.org/licenses/by-sa/3.0/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline underline-offset-4 hover:text-emerald-200"
-              >
-                CC BY-SA 3.0
-              </a>
-            </figcaption>
-          </figure>
+          <HeroCarrusel />
         </section>
 
         <section
@@ -278,9 +228,9 @@ export default function Home() {
           className="grid grid-cols-3 divide-x divide-white/10 rounded-3xl border border-white/10 bg-white/[0.025] py-6"
         >
           {[
-            { etiqueta: "Especies", valor: especies.length },
-            { etiqueta: "Plantas", valor: plantas },
-            { etiqueta: "Animales", valor: animales },
+            { etiqueta: "Especies ref.", valor: especies.length },
+            { etiqueta: "Plantas ref.", valor: plantas },
+            { etiqueta: "Animales ref.", valor: animales },
           ].map((dato) => (
             <div key={dato.etiqueta} className="px-3 text-center">
               <p className="text-3xl font-semibold tracking-tight text-emerald-200">
@@ -292,6 +242,10 @@ export default function Home() {
             </div>
           ))}
         </section>
+        <p className="mt-3 text-center text-xs text-slate-500">
+          Cifras del catálogo de referencia; no representan el total de
+          especies que puedes explorar o identificar.
+        </p>
 
         <section id="catalogo" className="scroll-mt-6 py-14">
           <div className="mb-8">
@@ -345,6 +299,15 @@ export default function Home() {
                 maxLength={100}
                 className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-3.5 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-300/50 focus:ring-4 focus:ring-emerald-300/10"
               />
+              <p className="mt-2 text-xs leading-5 text-slate-500">
+                ¿No encuentras la especie que buscas?{" "}
+                <Link
+                  href="/identificar"
+                  className="text-slate-400 underline decoration-white/20 underline-offset-4 transition hover:text-emerald-200"
+                >
+                  Usa la cámara para identificar cualquier otra.
+                </Link>
+              </p>
             </div>
           </div>
 
@@ -424,7 +387,7 @@ export default function Home() {
 
         <footer className="flex flex-col gap-3 border-t border-white/10 py-8 text-xs leading-5 text-slate-500 sm:flex-row sm:justify-between">
           <p>NATURA GO · Flora y fauna de Puebla</p>
-          <p>EXPLORE. IDENTIFY. PROTECT.</p>
+          <p>EXPLORA. IDENTIFICA. PROTEGE.</p>
         </footer>
       </div>
     </main>

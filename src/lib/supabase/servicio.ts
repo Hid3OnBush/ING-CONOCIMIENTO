@@ -1,0 +1,20 @@
+import { createClient } from "@supabase/supabase-js";
+
+export function crearClienteServicio() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url || !serviceKey) {
+    throw new Error(
+      "Falta configurar SUPABASE_SERVICE_ROLE_KEY en el entorno seguro del servidor."
+    );
+  }
+
+  return createClient(url, serviceKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+}

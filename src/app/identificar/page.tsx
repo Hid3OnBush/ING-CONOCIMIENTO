@@ -468,7 +468,7 @@ export default function IdentificarPage() {
 
     setOcupado(true);
     setErrorReconocimiento("");
-    setFase("Analizando con el modelo de Puebla y la cobertura externa…");
+    setFase("Analizando tu fotografía…");
 
     try {
       await solicitarReconocimiento(resultado.id);
@@ -611,7 +611,7 @@ export default function IdentificarPage() {
       setResultado(identificacion);
       setReconocimiento(null);
       setErrorReconocimiento("");
-      setFase("Analizando con el modelo de Puebla y la cobertura externa…");
+      setFase("Analizando tu fotografía…");
 
       try {
         await solicitarReconocimiento(identificacion.id);
@@ -720,16 +720,31 @@ export default function IdentificarPage() {
             </Link>
           </section>
         ) : (
-          <div className="grid items-start gap-6 lg:grid-cols-[1fr_320px]">
-            <section className="overflow-hidden rounded-3xl border border-white/10 bg-[#0d211b]">
-              <div className="border-b border-white/10 px-6 py-5">
+          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+            <section className="rounded-3xl border border-white/10 bg-[#0d211b] p-4 sm:p-6">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <h2 className="font-semibold">Tu fotografía</h2>
-                <p className="mt-1 text-sm text-white/50">
+                <span className="text-xs text-white/45">
                   JPEG, PNG o WebP · Hasta 5 MB
-                </p>
+                </span>
               </div>
 
-              <div className="p-5 sm:p-7">
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-200/15 bg-emerald-300/5 px-3 py-1.5 text-xs text-emerald-100/80">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  className="h-4 w-4"
+                  aria-hidden="true"
+                >
+                  <rect x="5" y="10" width="14" height="11" rx="2" />
+                  <path d="M8 10V7a4 4 0 0 1 8 0v3m-4 4v3" />
+                </svg>
+                Fotografía privada: solo visible en tu cuenta
+              </div>
+
+              <div>
                 {camaraActiva ? (
                   <div className="overflow-hidden rounded-2xl bg-black">
                     <video
@@ -738,11 +753,11 @@ export default function IdentificarPage() {
                       muted
                       playsInline
                       aria-label="Vista previa de la cámara"
-                      className="max-h-[480px] min-h-80 w-full object-contain"
+                      className="max-h-[480px] min-h-56 w-full object-contain sm:min-h-80"
                     />
                   </div>
                 ) : vistaPrevia ? (
-                  <div className="relative flex min-h-80 items-center justify-center overflow-hidden rounded-2xl bg-black/25">
+                  <div className="relative flex min-h-56 items-center justify-center overflow-hidden rounded-2xl bg-black/25 sm:min-h-80">
                     <Image
                       src={vistaPrevia}
                       alt="Vista previa de la fotografía seleccionada"
@@ -753,28 +768,28 @@ export default function IdentificarPage() {
                     />
                   </div>
                 ) : (
-                  <div className="flex min-h-80 flex-col items-center justify-center rounded-2xl border border-dashed border-emerald-200/25 bg-emerald-300/5 px-6 text-center">
-                    <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-300/10 text-emerald-200">
-                      <svg
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        className="h-8 w-8"
-                        aria-hidden="true"
-                      >
-                        <rect x="3" y="5" width="18" height="15" rx="3" />
-                        <circle cx="8" cy="10" r="1.5" />
-                        <path d="m3 17 5-4 4 3 4-5 5 6" />
-                      </svg>
-                    </span>
-
-                    <p className="mt-5 text-lg font-medium">
-                      Empieza con una fotografía
-                    </p>
-                    <p className="mt-2 max-w-sm text-sm leading-6 text-white/50">
-                      Busca buena iluminación y procura que la planta
-                      o el animal ocupe la mayor parte de la imagen.
+                  <div
+                    onDragOver={(evento) => evento.preventDefault()}
+                    onDrop={(evento) => {
+                      evento.preventDefault();
+                      void seleccionarArchivo(evento.dataTransfer.files[0]);
+                    }}
+                    className="flex min-h-56 flex-col items-center justify-center rounded-2xl border border-dashed border-emerald-200/25 bg-emerald-300/[0.035] px-4 py-8 text-center sm:min-h-80 sm:px-6"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      className="h-8 w-8 text-emerald-200/75"
+                      aria-hidden="true"
+                    >
+                      <rect x="3" y="5" width="18" height="15" rx="3" />
+                      <circle cx="8" cy="10" r="1.5" />
+                      <path d="m3 17 5-4 4 3 4-5 5 6" />
+                    </svg>
+                    <p className="mt-4 text-sm font-medium text-white/75">
+                      Arrastra tu imagen aquí o selecciona una opción
                     </p>
                   </div>
                 )}
@@ -783,9 +798,9 @@ export default function IdentificarPage() {
                   ref={inputArchivo}
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
-                  capture="environment"
-                  aria-label="Seleccionar fotografía"
                   className="sr-only"
+                  aria-hidden="true"
+                  tabIndex={-1}
                   disabled={!puedeSeleccionar}
                   onChange={(event) => {
                     void seleccionarArchivo(event.target.files?.[0]);
@@ -793,7 +808,7 @@ export default function IdentificarPage() {
                 />
 
                 {archivo && (
-                  <div className="mt-4 flex flex-wrap justify-between gap-2 text-xs text-white/50">
+                  <div className="mt-3 flex flex-wrap justify-between gap-2 text-xs text-white/50">
                     <span className="max-w-full break-all">
                       {archivo.name}
                     </span>
@@ -804,10 +819,7 @@ export default function IdentificarPage() {
                 )}
 
                 {error && (
-                  <p
-                    role="alert"
-                    className="mt-5 rounded-xl border border-red-300/20 bg-red-300/10 px-4 py-3 text-sm text-red-200"
-                  >
+                  <p role="alert" className="mt-4 text-sm text-red-200">
                     {error}
                   </p>
                 )}
@@ -815,7 +827,7 @@ export default function IdentificarPage() {
                 {ocupado && (
                   <p
                     role="status"
-                    className="mt-5 text-sm text-emerald-200"
+                    className="mt-4 text-sm text-emerald-200"
                   >
                     {fase}
                   </p>
@@ -859,20 +871,6 @@ export default function IdentificarPage() {
                           <p className="mt-3 text-sm leading-6 text-white/65">
                             {reconocimiento.mensaje}
                           </p>
-                          <div className="mt-4 flex flex-wrap gap-2 text-xs">
-                            <span className="rounded-full border border-emerald-200/20 px-3 py-1 text-emerald-100">
-                              {reconocimiento.fuente === "modelo_puebla"
-                                ? "Modelo Puebla"
-                                : "iNaturalist"}
-                            </span>
-                            {reconocimiento.confianza !== null && (
-                              <span className="rounded-full border border-white/15 px-3 py-1 text-white/70">
-                                {reconocimiento.fuente === "inaturalist"
-                                  ? `Puntaje relativo iNaturalist: ${(reconocimiento.confianza * 100).toFixed(1)}/100`
-                                  : `${(reconocimiento.confianza * 100).toFixed(1)}% de confianza`}
-                              </span>
-                            )}
-                          </div>
                           {(reconocimiento.especie.habitat ||
                             reconocimiento.especie.estado_conservacion) && (
                             <dl className="mt-4 space-y-2 border-t border-white/10 pt-4 text-sm">
@@ -930,7 +928,7 @@ export default function IdentificarPage() {
                       )}
                       {!reconocimiento && !errorReconocimiento && (
                         <p className="mt-2 text-sm leading-6 text-white/65">
-                          {fase || "Consultando los modelos de identificación…"}
+                          {fase || "Preparando tu identificación…"}
                         </p>
                       )}
                       <p className="mt-3 break-all text-xs text-white/40">
@@ -960,21 +958,25 @@ export default function IdentificarPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="mt-6 flex flex-wrap gap-3">
+                  <div className="mt-4 grid grid-cols-1 gap-3 sm:flex sm:flex-wrap">
                     <button
                       type="button"
-                      disabled={!puedeSeleccionar}
+                      disabled={!puedeSeleccionar || bloquearSeleccion}
                       onClick={() => inputArchivo.current?.click()}
-                      className="rounded-xl border border-white/15 px-5 py-3 text-sm font-medium transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+                      className={`min-h-12 rounded-xl px-5 py-3 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:cursor-not-allowed disabled:opacity-40 ${
+                        archivo
+                        ? "order-2 border border-white/15 text-white/80 hover:bg-white/5 sm:order-1"
+                        : "order-2 border border-white/15 text-white/80 hover:bg-white/5"
+                      }`}
                     >
-                      {archivo ? "Cambiar fotografía" : "Seleccionar fotografía"}
+                      {archivo ? "Cambiar imagen" : "Seleccionar fotografía"}
                     </button>
                     {camaraActiva ? (
                       <button
                         type="button"
                         disabled={!puedeSeleccionar}
                         onClick={() => void capturarFotograma()}
-                        className="rounded-xl bg-emerald-300 px-5 py-3 text-sm font-semibold text-[#071411] transition hover:bg-emerald-200 disabled:opacity-40"
+                        className="min-h-12 rounded-xl bg-emerald-300 px-5 py-3 text-sm font-semibold text-[#071411] transition hover:bg-emerald-200 disabled:opacity-40 sm:order-1"
                       >
                         Capturar fotografía
                       </button>
@@ -983,63 +985,43 @@ export default function IdentificarPage() {
                         type="button"
                         disabled={!puedeSeleccionar}
                         onClick={() => void abrirCamara()}
-                        className="rounded-xl border border-emerald-200/30 px-5 py-3 text-sm font-medium text-emerald-100 transition hover:bg-emerald-300/10 disabled:cursor-not-allowed disabled:opacity-40"
+                        className={`min-h-12 rounded-xl border border-emerald-200/30 px-5 py-3 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-300/10 disabled:cursor-not-allowed disabled:opacity-40 ${
+                          archivo
+                            ? "order-1 sm:order-2"
+                            : "order-1"
+                        }`}
                       >
                         Abrir cámara
                       </button>
                     )}
-                    <button
-                      type="button"
-                      disabled={!archivo || ocupado}
-                      onClick={() => void guardarFotografia()}
-                      className="rounded-xl bg-emerald-300 px-5 py-3 text-sm font-semibold text-[#071411] transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      {ocupado
-                        ? "Guardando…"
-                        : bloquearSeleccion
-                          ? "Reintentar envío"
-                          : "Guardar fotografía"}
-                    </button>
+                    {archivo && (
+                      <button
+                        type="button"
+                        disabled={ocupado}
+                        onClick={() => void guardarFotografia()}
+                        className="min-h-12 rounded-xl bg-emerald-300 px-5 py-3 text-sm font-semibold text-[#071411] transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-40 sm:ml-auto"
+                      >
+                        {ocupado
+                          ? "Preparando identificación…"
+                          : bloquearSeleccion
+                            ? "Reintentar envío"
+                            : "Identificar especie"}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
             </section>
 
-            <aside className="space-y-5">
-              <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-6">
-                <h2 className="font-semibold">Una fotografía más clara</h2>
-
-                <ul className="mt-4 space-y-4 text-sm leading-6 text-white/60">
-                  <li>Utiliza luz natural cuando sea posible.</li>
-                  <li>Evita imágenes borrosas o demasiado lejanas.</li>
-                  <li>Fotografía una planta o un animal a la vez.</li>
-                  <li>
-                    Mantén distancia y evita manipular especies que
-                    no conoces.
-                  </li>
-                </ul>
-              </section>
-
-              <section className="rounded-3xl border border-emerald-300/15 bg-emerald-300/5 p-6">
-                <h2 className="font-semibold text-emerald-200">
-                  Tu fotografía es privada
+            <aside>
+              <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:p-6">
+                <h2 className="font-semibold text-emerald-100">
+                  Identificación inteligente
                 </h2>
-
                 <p className="mt-3 text-sm leading-6 text-white/60">
-                  Se guarda dentro de tu cuenta y no se publica
-                  en el catálogo de especies.
-                </p>
-              </section>
-
-              <section className="rounded-3xl border border-amber-200/15 bg-amber-200/5 p-6">
-                <h2 className="font-semibold text-amber-100">
-                  Identificación asistida
-                </h2>
-
-                <p className="mt-3 text-sm leading-6 text-white/60">
-                  Primero se consulta el modelo especializado en especies
-                  de Puebla. Si no supera el umbral de confianza, se usa
-                  iNaturalist como cobertura complementaria.
+                  Nuestro sistema analiza la fotografía utilizando catálogos
+                  biológicos para ofrecerte el resultado más preciso de la
+                  especie.
                 </p>
               </section>
             </aside>
