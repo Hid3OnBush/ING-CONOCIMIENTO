@@ -1,6 +1,7 @@
 import type { EspecieHomogenea } from "./enriquecerEspecie";
 
 export const UMBRAL_MODELO_PUEBLA = 0.7;
+export const UMBRAL_MARGEN_MODELO_PUEBLA = 0.15;
 
 export type FuenteReconocimiento = "modelo_puebla" | "inaturalist";
 
