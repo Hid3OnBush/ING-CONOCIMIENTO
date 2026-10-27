@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { textoPlano } from "@/lib/texto-plano";
+import TarjetaConservacion from "../tarjeta-conservacion";
 
 type ImagenEspecie = {
   id: number;
@@ -21,14 +22,12 @@ type Especie = {
   nombre_comun: string;
   nombre_cientifico: string;
   tipo: "PLANTA" | "ANIMAL";
+  peligrosa: boolean | null;
+  toxica: boolean | null;
+  venenosa: boolean | null;
+  protegida: boolean | null;
   imagenes_especies: ImagenEspecie[];
 } & Record<string, unknown>;
-
-function indicador(valor: unknown) {
-  if (valor === true) return "Sí";
-  if (valor === false) return "No";
-  return null;
-}
 
 export default function PaginaEspecie() {
   const { id } = useParams<{ id: string }>();
@@ -115,14 +114,6 @@ function FichaEspecie({ id }: { id: string }) {
         ["Género", especie.genero],
         ["Especie", especie.especie_taxonomica],
       ].filter(([, valor]) => textoPlano(valor) !== null)
-    : [];
-  const riesgos = especie
-    ? [
-        ["Peligrosa", especie.peligrosa],
-        ["Tóxica", especie.toxica],
-        ["Venenosa", especie.venenosa],
-        ["Protegida", especie.protegida],
-      ].filter(([, valor]) => typeof valor === "boolean")
     : [];
   const nivelRiesgo = textoPlano(especie?.nivel_riesgo);
   const estadoConservacion = textoPlano(especie?.estado_conservacion);
@@ -306,69 +297,18 @@ function FichaEspecie({ id }: { id: string }) {
                   </section>
                 )}
 
-                {(riesgos.length > 0 ||
-                  nivelRiesgo ||
-                  estadoConservacion ||
-                  notasSeguridad.length > 0) && (
-                  <section className="rounded-3xl border border-white/10 bg-white/[0.025] p-6">
-                  <p className="text-[10px] uppercase tracking-[0.25em] text-emerald-300">
-                    Información registrada
-                  </p>
-
-                  <h2 className="mt-3 text-xl font-semibold tracking-tight">
-                    Riesgo y conservación
-                  </h2>
-
-                  <dl className="mt-5 grid grid-cols-2 gap-3">
-                    {riesgos.map(([etiqueta, valor]) => (
-                      <div
-                        key={String(etiqueta)}
-                        className="rounded-2xl border border-white/10 bg-black/10 p-4"
-                      >
-                        <dt className="text-xs text-slate-500">
-                          {String(etiqueta)}
-                        </dt>
-                        <dd className="mt-2 text-sm font-medium text-emerald-100">
-                          {indicador(valor)}
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
-
-                  {notasSeguridad.length > 0 && (
-                    <ul className="mt-5 space-y-2 border-t border-white/10 pt-5 text-sm leading-6 text-amber-100/80">
-                      {notasSeguridad.map((nota) => (
-                        <li key={nota}>{nota}</li>
-                      ))}
-                    </ul>
-                  )}
-
-                  {(nivelRiesgo || estadoConservacion) && (
-                    <div className="mt-5 space-y-4 border-t border-white/10 pt-5">
-                    {nivelRiesgo && (
-                      <div>
-                      <h3 className="text-xs font-medium text-slate-500">
-                        Nivel de riesgo
-                      </h3>
-                      <p className="mt-2 text-sm leading-6 text-slate-300">
-                        {nivelRiesgo}
-                      </p>
-                      </div>
-                    )}
-
-                    {estadoConservacion && (
-                      <div>
-                      <h3 className="text-xs font-medium text-slate-500">
-                        Estado de conservación
-                      </h3>
-                      <p className="mt-2 text-sm leading-6 text-slate-300">
-                        {estadoConservacion}
-                      </p>
-                      </div>
-                    )}
-                    </div>
-                  )}
-                  </section>
+                {especie && (
+                  <TarjetaConservacion
+                    nivelRiesgo={nivelRiesgo}
+                    estadoConservacion={estadoConservacion}
+                    indicadores={[
+                      { nombre: "Peligrosa", valor: especie.peligrosa },
+                      { nombre: "Tóxica", valor: especie.toxica },
+                      { nombre: "Venenosa", valor: especie.venenosa },
+                      { nombre: "Protegida", valor: especie.protegida },
+                    ]}
+                    notas={notasSeguridad}
+                  />
                 )}
 
                 {(fuentePrincipal || textoPlano(especie.fuente_url)) && (

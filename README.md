@@ -35,6 +35,15 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
 
+## Fichas de especies
+
+La consulta de detalle complementa los campos vacíos del catálogo con
+iNaturalist, GBIF, Wikipedia en español y Wikidata. Primero exige una
+coincidencia exacta del nombre científico en iNaturalist; los datos que ya
+existen en Supabase conservan prioridad. Las consultas externas se reutilizan
+en memoria durante seis horas para reducir latencia y solicitudes repetidas.
+Los campos de riesgo no se completan mediante inferencias textuales.
+
 ## Cámara e identificación híbrida
 
 La pantalla `/identificar` admite captura en vivo con la cámara trasera y

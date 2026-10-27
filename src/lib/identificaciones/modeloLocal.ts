@@ -37,7 +37,11 @@ type ModeloLocalCargado = {
   imageSize: number;
 };
 
-let modeloPendiente: Promise<ModeloLocalCargado> | null = null;
+type GlobalConModeloLocal = typeof globalThis & {
+  __modeloLocalIdentificaciones?: Promise<ModeloLocalCargado>;
+};
+
+const globalConModeloLocal = globalThis as GlobalConModeloLocal;
 
 export function esEtiquetaModeloLocal(
   valor: string
@@ -127,8 +131,19 @@ async function cargarModelo(): Promise<ModeloLocalCargado> {
 }
 
 async function obtenerModelo(): Promise<ModeloLocalCargado> {
-  modeloPendiente ??= cargarModelo();
-  return modeloPendiente;
+  const pendiente =
+    globalConModeloLocal.__modeloLocalIdentificaciones ??
+    (globalConModeloLocal.__modeloLocalIdentificaciones = cargarModelo());
+
+  try {
+    return await pendiente;
+  } catch (error) {
+    if (globalConModeloLocal.__modeloLocalIdentificaciones === pendiente) {
+      delete globalConModeloLocal.__modeloLocalIdentificaciones;
+    }
+
+    throw error;
+  }
 }
 
 export async function predecirModeloLocal(

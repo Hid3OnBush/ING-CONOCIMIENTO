@@ -34,6 +34,20 @@ export interface EspecieHomogenea {
 
 type ClienteServidor = Awaited<ReturnType<typeof crearClienteServidor>>;
 
+type CacheDetalles = {
+  expira: number;
+  pendiente: Promise<EspecieHomogenea | null>;
+};
+
+type GlobalConCacheDetalles = typeof globalThis & {
+  __cacheDetallesEspecies?: Map<string, CacheDetalles>;
+};
+
+const globalConCacheDetalles = globalThis as GlobalConCacheDetalles;
+const DURACION_CACHE_DETALLES_MS = 6 * 60 * 60 * 1000;
+const DURACION_CACHE_SIN_RESULTADO_MS = 10 * 60 * 1000;
+const MAXIMO_DETALLES_CACHEADOS = 500;
+
 function esRegistro(valor: unknown): valor is Record<string, unknown> {
   return (
     typeof valor === "object" &&
@@ -90,6 +104,101 @@ async function consultarApi(
       error instanceof Error ? error.message : "Error desconocido"
     );
     return null;
+  }
+}
+
+function nombreNormalizado(valor: string): string {
+  return valor
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+async function consultarTaxonPorNombre(
+  scientificName: string
+): Promise<number | null> {
+  const url = new URL("https://api.inaturalist.org/v1/taxa");
+  url.searchParams.set("q", scientificName);
+  url.searchParams.set("locale", "es");
+  url.searchParams.set("is_active", "true");
+  url.searchParams.set("per_page", "10");
+
+  const respuesta = await consultarApi(
+    url.toString(),
+    "la búsqueda de especies de iNaturalist"
+  );
+  const resultados = Array.isArray(respuesta?.results)
+    ? respuesta.results.filter(esRegistro)
+    : [];
+  const nombreBuscado = nombreNormalizado(scientificName);
+  const taxonExacto = resultados.find(
+    (resultado) =>
+      typeof resultado.id === "number" &&
+      Number.isSafeInteger(resultado.id) &&
+      nombreNormalizado(texto(resultado.name) ?? "") === nombreBuscado
+  );
+
+  return typeof taxonExacto?.id === "number" ? taxonExacto.id : null;
+}
+
+export async function obtenerDetallesEspeciePorNombre(
+  scientificName: string
+): Promise<EspecieHomogenea | null> {
+  const nombre = texto(scientificName);
+  if (!nombre) {
+    return null;
+  }
+
+  const clave = nombreNormalizado(nombre);
+  const ahora = Date.now();
+  const cache =
+    globalConCacheDetalles.__cacheDetallesEspecies ??
+    (globalConCacheDetalles.__cacheDetallesEspecies = new Map());
+  const existente = cache.get(clave);
+
+  if (existente && existente.expira > ahora) {
+    return existente.pendiente;
+  }
+
+  if (existente) {
+    cache.delete(clave);
+  }
+
+  const pendiente = (async () => {
+    const taxonId = await consultarTaxonPorNombre(nombre);
+    return taxonId
+      ? obtenerDetallesEspecieExterna(taxonId, nombre)
+      : null;
+  })();
+
+  cache.set(clave, {
+    expira: ahora + DURACION_CACHE_DETALLES_MS,
+    pendiente,
+  });
+
+  if (cache.size > MAXIMO_DETALLES_CACHEADOS) {
+    const primeraClave = cache.keys().next().value;
+    if (primeraClave !== undefined) {
+      cache.delete(primeraClave);
+    }
+  }
+
+  try {
+    const detalles = await pendiente;
+    if (!detalles && cache.get(clave)?.pendiente === pendiente) {
+      cache.set(clave, {
+        expira: Date.now() + DURACION_CACHE_SIN_RESULTADO_MS,
+        pendiente,
+      });
+    }
+    return detalles;
+  } catch (error) {
+    if (cache.get(clave)?.pendiente === pendiente) {
+      cache.delete(clave);
+    }
+    throw error;
   }
 }
 
@@ -504,26 +613,39 @@ function detectarSeguridad(textoFuente: string): {
 }
 
 async function consultarWikipedia(
-  scientificName: string
+  scientificName: string,
+  commonName: string | null
 ): Promise<Record<string, unknown> | null> {
   const nombreLimpio = texto(scientificName) ?? scientificName.trim();
   const palabrasTaxonomicas = nombreLimpio
     .replace(/\s*\([^)]*\)\s*/g, " ")
     .split(/\s+/)
     .filter(Boolean);
-  const variantesBusqueda = Array.from(
-    new Set([
-      nombreLimpio,
-      palabrasTaxonomicas.slice(0, 2).join(" "),
-    ].filter(Boolean))
-  );
+  const candidatasBusqueda = [
+    { nombre: nombreLimpio, cientifica: true },
+    {
+      nombre: palabrasTaxonomicas.slice(0, 2).join(" "),
+      cientifica: true,
+    },
+    ...(commonName ? [{ nombre: commonName, cientifica: false }] : []),
+  ];
+  const nombresVistos = new Set<string>();
+  const variantesBusqueda = candidatasBusqueda.filter((variante) => {
+    const clave = normalizarEtiqueta(variante.nombre);
+    if (!variante.nombre || nombresVistos.has(clave)) {
+      return false;
+    }
+
+    nombresVistos.add(clave);
+    return true;
+  });
 
   for (const variante of variantesBusqueda) {
     const busquedaUrl = new URL("https://es.wikipedia.org/w/api.php");
     busquedaUrl.search = new URLSearchParams({
       action: "query",
       list: "search",
-      srsearch: `"${variante}"`,
+      srsearch: `"${variante.nombre}"`,
       srnamespace: "0",
       srlimit: "5",
       format: "json",
@@ -544,20 +666,9 @@ async function consultarWikipedia(
       (resultado) =>
         typeof resultado.title === "string" &&
         normalizarEtiqueta(resultado.title) ===
-          normalizarEtiqueta(variante)
+          normalizarEtiqueta(variante.nombre)
     );
-    const articuloRelacionado = resultados.find((resultado) => {
-      const titulo = texto(resultado.title);
-      const fragmento = texto(resultado.snippet);
-      const nombreNormalizado = normalizarEtiqueta(variante);
-      return Boolean(
-        titulo &&
-          (normalizarEtiqueta(titulo).startsWith(nombreNormalizado) ||
-            (fragmento &&
-              normalizarEtiqueta(fragmento).includes(nombreNormalizado)))
-      );
-    });
-    const articulo = articuloExacto ?? articuloRelacionado;
+    const articulo = articuloExacto;
     const titulo = texto(articulo?.title);
 
     if (!titulo) {
@@ -593,7 +704,20 @@ async function consultarWikipedia(
         normalizarEtiqueta(titulo)
     );
 
-    if (pagina) {
+    const extracto = texto(pagina?.extract);
+    const nombreCientificoNormalizado = normalizarEtiqueta(
+      palabrasTaxonomicas.slice(0, 2).join(" ")
+    );
+    const esArticuloCientifico =
+      variante.cientifica ||
+      Boolean(
+        extracto &&
+          normalizarEtiqueta(extracto).includes(
+            nombreCientificoNormalizado
+          )
+      );
+
+    if (pagina && esArticuloCientifico) {
       return pagina;
     }
   }
@@ -842,23 +966,23 @@ export async function obtenerDetallesEspecieExterna(
   taxonUrl.searchParams.set("locale", "es");
   taxonUrl.searchParams.append("include[]", "ancestors");
 
-  const [
-    respuestaTaxon,
-    resumenWikipedia,
-    datosGBIF,
-    descripcionWikidata,
-  ] = await Promise.all([
-    consultarApi(taxonUrl.toString(), "la API de taxa de iNaturalist"),
-    consultarWikipedia(scientificName),
-    consultarGBIF(scientificName),
-    consultarWikidata(scientificName),
-  ]);
-
+  const respuestaTaxon = await consultarApi(
+    taxonUrl.toString(),
+    "la API de taxa de iNaturalist"
+  );
   const resultadosTaxon = respuestaTaxon?.results;
   const taxon =
     Array.isArray(resultadosTaxon) && esRegistro(resultadosTaxon[0])
       ? resultadosTaxon[0]
       : null;
+  const nombreComun = texto(taxon?.preferred_common_name);
+  const [resumenWikipedia, datosGBIF, descripcionWikidata] =
+    await Promise.all([
+    consultarWikipedia(scientificName, nombreComun),
+    consultarGBIF(scientificName),
+    consultarWikidata(scientificName),
+  ]);
+
   const ancestros = Array.isArray(taxon?.ancestors)
     ? taxon.ancestors.filter(esRegistro)
     : [];
@@ -938,7 +1062,7 @@ export async function obtenerDetallesEspecieExterna(
     .filter((parte): parte is string => Boolean(parte))
     .join("\n");
   const seguridad = detectarSeguridad(corpusSeguridad);
-  const nombreComun = texto(taxon?.preferred_common_name) ?? scientificName;
+  const nombreComunTaxon = nombreComun ?? scientificName;
   const tipo = tipoEspecie(taxon, ancestros);
   const distribucionGBIF = leerDistribucionGBIF(
     datosGBIF.distribuciones
@@ -970,7 +1094,7 @@ export async function obtenerDetallesEspecieExterna(
   return {
     id: null,
     taxon_id: taxonId,
-    nombre_comun: nombreComun,
+    nombre_comun: nombreComunTaxon,
     nombre_cientifico:
       texto(taxon?.name) ??
       texto(taxonGBIF?.canonicalName) ??
