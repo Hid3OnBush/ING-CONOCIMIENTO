@@ -35,6 +35,15 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
 
+## Fichas de especies
+
+La consulta de detalle complementa los campos vacíos del catálogo con
+iNaturalist, GBIF, Wikipedia en español y Wikidata. Primero exige una
+coincidencia exacta del nombre científico en iNaturalist; los datos que ya
+existen en Supabase conservan prioridad. Las consultas externas se reutilizan
+en memoria durante seis horas para reducir latencia y solicitudes repetidas.
+Los campos de riesgo no se completan mediante inferencias textuales.
+
 ## Cámara e identificación híbrida
 
 La pantalla `/identificar` admite captura en vivo con la cámara trasera y
@@ -50,35 +59,26 @@ El flujo guarda primero la fotografía en el bucket privado y crea la fila de
 la sesión y propiedad de la fila, analiza la imagen y persiste estado, especie,
 confianza y predicciones. El orden es:
 
-1. `PUEBLA_MODEL_URL`, si está configurada. Se acepta una clasificación sólo si
-   `confidence >= 0.7` y la especie coincide con una especie activa del catálogo.
-2. iNaturalist Computer Vision como fallback. La fotografía se envía como el
-   campo multipart `image`; por lo tanto, se transmite a iNaturalist cuando se
-   activa este fallback. No se envía la clave del modelo al navegador.
+1. El modelo Teachable Machine incluido en
+   `public/modelos/tm-my-image-model/` propone una de sus cuatro clases. Se
+   considera candidata sólo si su confianza es al menos `0.7`, supera a la
+   segunda clase por `0.15` o más, y coincide con una única especie activa del
+   catálogo.
+2. iNaturalist Computer Vision analiza todas las fotografías. La predicción
+   local sólo se acepta si la especie científica principal de iNaturalist
+   coincide exactamente; si no coincide, el resultado es el de iNaturalist.
+   Así se evita que el clasificador cerrado fuerce una de sus cuatro clases
+   para una imagen de otra especie.
 
 Configura estas variables sólo en el entorno del servidor (`.env.local` en
 desarrollo, y el gestor de secretos del hosting en producción):
 
 ```dotenv
-PUEBLA_MODEL_URL=https://tu-servicio-privado.example/api/identify
-PUEBLA_MODEL_API_KEY=secreto-del-servicio
 INATURALIST_OAUTH_ACCESS_TOKEN=token-oauth-de-inaturalist
 SUPABASE_SERVICE_ROLE_KEY=clave-service-role-de-supabase
 ```
 
-`PUEBLA_MODEL_URL` es opcional: sin ella, la aplicación usa iNaturalist. Cuando
-está configurada, Next.js envía el archivo como `multipart/form-data` en el
-campo `file` y, si se configuró la clave, agrega `Authorization: Bearer ...`.
-El servicio propio debe responder JSON con confianza normalizada entre 0 y 1 y
-el ID o nombre científico exacto de una especie del catálogo:
-
-```json
-{
-  "species_id": 12,
-  "scientific_name": "Nombre científico",
-  "confidence": 0.93
-}
-```
+El modelo local no necesita una URL ni una clave de API: sus archivos están incluidos con la aplicación y se ejecuta en el servidor Next.js. Las cuatro etiquetas son Cempasúchil, Pino montezuma, Bugambilia y Ajolote. Para aceptar una clase, ésta debe coincidir con una única especie activa del catálogo; de lo contrario, se usa iNaturalist.
 
 El endpoint Computer Vision de iNaturalist también requiere autenticación.
 La opción recomendada es configurar `INATURALIST_OAUTH_ACCESS_TOKEN`, obtenido
@@ -110,41 +110,18 @@ Para dar los permisos SQL mínimos que necesita ese flujo, aplica la migración
 `supabase/migrations/20261017000200_service_role_identification_writes.sql`
 en el proyecto Supabase (por ejemplo, desde SQL Editor o con Supabase CLI).
 
-Para mantener el modelo separado de la aplicación web, se recomienda alojarlo
-como un servicio Python/FastAPI independiente, con el artefacto versionado fuera
-del código web, un `labels.json` estable, preprocesamiento idéntico al
-entrenamiento, validación de tamaño y tipo MIME, y pruebas para cada versión.
-ONNX Runtime es una buena opción si se busca portabilidad CPU; PyTorch puede
-usarse durante entrenamiento o servirse directamente. El servicio debe
-autenticarse y exponerse sólo por HTTPS en producción. `species_id` siempre
-debe referirse al catálogo de Supabase; la aplicación no crea fichas a partir
-de una predicción no mapeada.
-
-Una estructura inicial para ese servicio separado sería:
-
-```text
-ml-service/
-  app/
-    main.py          # Endpoint FastAPI POST /api/identify
-    inference.py     # Carga de modelo, preprocesamiento e inferencia
-  models/
-    species-v1.onnx  # Artefacto desplegado fuera del repositorio
-    labels.json      # Clase del modelo -> ID/especie del catálogo
-  tests/
-    test_inference.py
-  requirements.txt
-```
-
-Entrena y evalúa las 20 especies con particiones por imagen/individuo y revisa
-precision, recall y matriz de confusión antes de activar el modelo. El umbral
-`0.7` es un valor inicial configurable en
-`src/lib/identificaciones/reconocimiento.ts`, no una garantía de exactitud
-biológica; debe calibrarse con datos de validación representativos de Puebla.
+El modelo es de clasificación cerrada: siempre asigna una de sus cuatro clases,
+incluso si la fotografía corresponde a otra especie. Por eso se consulta
+iNaturalist también para validar la clase local; la foto se envía a ese
+servicio en todas las identificaciones. Los umbrales `0.7` y `0.15` reducen
+predicciones dudosas, pero deben calibrarse con fotos de validación que incluyan
+las cuatro clases, otras especies, objetos y fondos sin organismos.
 
 ### Formato homogéneo del resultado
 
 La ruta de resultado devuelve `identificacion` y un objeto `resultado` tanto
-para el modelo propio como para iNaturalist:
+para una coincidencia corroborada por el modelo local como para una sugerencia
+de iNaturalist:
 
 ```json
 {
@@ -183,7 +160,7 @@ para el modelo propio como para iNaturalist:
       }
     },
     "alternativas": [],
-    "mensaje": "Identificación realizada por el modelo de Puebla."
+    "mensaje": "El modelo local y iNaturalist coinciden en esta identificación."
   }
 }
 ```
@@ -200,8 +177,8 @@ El resultado de iNaturalist incluye `taxon_id`; la interfaz usa ese dato para
 mostrar “Ver detalles de la especie” y abrir una ficha externa con su descripción,
 imagen, taxonomía y estado de conservación, aunque todavía no tenga una ficha
 activa en Supabase.
-`confianza` usa el rango 0–1. Para el modelo propio corresponde a su confianza
-normalizada; para iNaturalist se deriva de `combined_score` (o
+`confianza` usa el rango 0–1. Para una coincidencia corroborada corresponde a
+la confianza normalizada del modelo local; para iNaturalist se deriva de `combined_score` (o
 `vision_score` como alternativa) dividido entre 100. La interfaz muestra este
 último como puntaje relativo sobre 100, no como probabilidad de acierto:
 iNaturalist advierte que sus puntajes sirven para ordenar sugerencias y no

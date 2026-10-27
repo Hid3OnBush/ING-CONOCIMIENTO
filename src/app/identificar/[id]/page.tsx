@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { FichaEspecieReconocida } from "@/lib/identificaciones/reconocimiento";
+import TarjetaConservacion from "@/app/especies/tarjeta-conservacion";
 
 type Estado = "PENDIENTE" | "PROCESANDO" | "COMPLETADA" | "ERROR";
 
@@ -309,40 +310,28 @@ export default function DetalleIdentificacionPage() {
                     </dl>
                   </section>
 
-                  <section className="rounded-3xl border border-white/10 bg-white/[0.025] p-6">
-                    <h2 className="text-xl font-semibold">
-                      Riesgo y conservación
-                    </h2>
-                    <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                      {[
-                        ["Nivel de riesgo", detalle.especie.nivel_riesgo],
-                        [
-                          "Estado de conservación",
-                          detalle.especie.estado_conservacion,
-                        ],
-                        ["Peligrosa", detalle.especie.peligrosa],
-                        ["Tóxica", detalle.especie.toxica],
-                        ["Venenosa", detalle.especie.venenosa],
-                        ["Protegida", detalle.especie.protegida],
-                      ].map(([etiqueta, valor]) => (
-                        <div
-                          key={String(etiqueta)}
-                          className="rounded-xl border border-white/10 p-3"
-                        >
-                          <dt className="text-xs text-white/45">
-                            {String(etiqueta)}
-                          </dt>
-                          <dd className="mt-2 text-white/80">
-                            {typeof valor === "boolean"
-                              ? valor
-                                ? "Sí"
-                                : "No"
-                              : texto(valor)}
-                          </dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </section>
+                  <TarjetaConservacion
+                    nivelRiesgo={detalle.especie.nivel_riesgo}
+                    estadoConservacion={
+                      detalle.especie.estado_conservacion
+                    }
+                    indicadores={[
+                      {
+                        nombre: "Peligrosa",
+                        valor: detalle.especie.peligrosa,
+                      },
+                      { nombre: "Tóxica", valor: detalle.especie.toxica },
+                      {
+                        nombre: "Venenosa",
+                        valor: detalle.especie.venenosa,
+                      },
+                      {
+                        nombre: "Protegida",
+                        valor: detalle.especie.protegida,
+                      },
+                    ]}
+                    notas={detalle.especie.notas_seguridad}
+                  />
                 </aside>
               )}
             </div>

@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { crearClientePublico } from "@/lib/supabase/publico";
+import { obtenerDetallesEspeciePorNombre } from "@/lib/identificaciones/enriquecerEspecie";
 
 export const dynamic = "force-dynamic";
 
 type Contexto = {
   params: Promise<{ id: string }>;
 };
+
+function textoDisponible(valor: unknown): string | null {
+  return typeof valor === "string" && valor.trim() ? valor : null;
+}
 
 export async function GET(
   _request: Request,
@@ -87,8 +92,83 @@ export async function GET(
       );
     }
 
+    const camposComplementables = [
+      data.descripcion,
+      data.habitat,
+      data.alimentacion,
+      data.temporada,
+      data.distribucion,
+      data.caracteristicas,
+      data.estado_conservacion,
+      data.reino,
+      data.filo_division,
+      data.clase,
+      data.orden_taxonomico,
+      data.familia,
+      data.genero,
+      data.especie_taxonomica,
+    ];
+    const necesitaComplemento = camposComplementables.some(
+      (valor) => typeof valor !== "string" || !valor.trim()
+    );
+    let especie = data;
+
+    if (necesitaComplemento) {
+      try {
+        const externa = await obtenerDetallesEspeciePorNombre(
+          data.nombre_cientifico
+        );
+
+        if (externa) {
+          especie = {
+            ...data,
+            descripcion:
+              textoDisponible(data.descripcion) ?? externa.descripcion,
+            habitat: textoDisponible(data.habitat) ?? externa.habitat,
+            alimentacion:
+              textoDisponible(data.alimentacion) ?? externa.alimentacion,
+            temporada:
+              textoDisponible(data.temporada) ?? externa.temporada,
+            distribucion:
+              textoDisponible(data.distribucion) ?? externa.distribucion,
+            caracteristicas:
+              textoDisponible(data.caracteristicas) ??
+              externa.caracteristicas,
+            estado_conservacion:
+              textoDisponible(data.estado_conservacion) ??
+              externa.estado_conservacion,
+            nivel_riesgo:
+              textoDisponible(data.nivel_riesgo) ?? externa.nivel_riesgo,
+            reino:
+              textoDisponible(data.reino) ?? externa.taxonomia.reino,
+            filo_division:
+              textoDisponible(data.filo_division) ??
+              externa.taxonomia.filo_division,
+            clase: textoDisponible(data.clase) ?? externa.taxonomia.clase,
+            orden_taxonomico:
+              textoDisponible(data.orden_taxonomico) ??
+              externa.taxonomia.orden,
+            familia:
+              textoDisponible(data.familia) ?? externa.taxonomia.familia,
+            genero:
+              textoDisponible(data.genero) ?? externa.taxonomia.genero,
+            especie_taxonomica:
+              textoDisponible(data.especie_taxonomica) ??
+              externa.taxonomia.especie,
+          };
+        }
+      } catch (errorComplemento) {
+        console.warn(
+          "No se pudo complementar la ficha con fuentes externas:",
+          errorComplemento instanceof Error
+            ? errorComplemento.message
+            : "Error desconocido"
+        );
+      }
+    }
+
     return NextResponse.json(
-      { especie: data },
+      { especie },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {

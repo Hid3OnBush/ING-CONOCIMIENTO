@@ -2,17 +2,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { obtenerDetallesEspecieExterna } from "@/lib/identificaciones/enriquecerEspecie";
 import { textoPlano } from "@/lib/texto-plano";
+import TarjetaConservacion from "../../tarjeta-conservacion";
 
 type Contexto = {
   params: Promise<{ taxonId: string }>;
   searchParams: Promise<{ nombre?: string | string[] }>;
 };
-
-function indicador(valor: boolean | null) {
-  if (valor === true) return "Sí";
-  if (valor === false) return "No";
-  return null;
-}
 
 export default async function PaginaEspecieINaturalist({
   params,
@@ -68,23 +63,6 @@ export default async function PaginaEspecieINaturalist({
         ["Especie", especie.taxonomia.especie],
       ].filter(([, valor]) => textoPlano(valor) !== null)
     : [];
-  const riesgos: Array<[string, boolean | null]> = especie
-    ? [
-        ["Peligrosa", especie.peligrosa],
-        ["Tóxica", especie.toxica],
-        ["Venenosa", especie.venenosa],
-        ["Protegida", especie.protegida],
-      ].filter(
-        (riesgo): riesgo is [string, boolean] =>
-          typeof riesgo[1] === "boolean"
-      )
-    : [];
-  const riesgoTexto = especie ? textoPlano(especie.nivel_riesgo) : null;
-  const estadoConservacion = especie
-    ? textoPlano(especie.estado_conservacion)
-    : null;
-  const notasSeguridad = especie?.notas_seguridad ?? [];
-
   return (
     <main className="min-h-screen bg-[#071411] text-slate-100">
       <header className="border-b border-white/10">
@@ -210,64 +188,18 @@ export default async function PaginaEspecieINaturalist({
                   </section>
                 )}
 
-                {(riesgos.length > 0 ||
-                  riesgoTexto ||
-                  estadoConservacion ||
-                  notasSeguridad.length > 0) && (
-                  <section className="rounded-3xl border border-white/10 bg-white/[0.025] p-6">
-                  <p className="text-[10px] uppercase tracking-[0.25em] text-emerald-300">
-                    Información registrada
-                  </p>
-                  <h2 className="mt-3 text-xl font-semibold tracking-tight">
-                    Riesgo y conservación
-                  </h2>
-                  <dl className="mt-5 grid grid-cols-2 gap-3">
-                    {riesgos.map(([etiqueta, valor]) => (
-                      <div
-                        key={String(etiqueta)}
-                        className="rounded-2xl border border-white/10 bg-black/10 p-4"
-                      >
-                        <dt className="text-xs text-slate-500">
-                          {String(etiqueta)}
-                        </dt>
-                        <dd className="mt-2 text-sm font-medium text-emerald-100">
-                          {indicador(valor)}
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
-                  {notasSeguridad.length > 0 && (
-                    <ul className="mt-5 space-y-2 border-t border-white/10 pt-5 text-sm leading-6 text-amber-100/80">
-                      {notasSeguridad.map((nota) => (
-                        <li key={nota}>{nota}</li>
-                      ))}
-                    </ul>
-                  )}
-                  {(riesgoTexto || estadoConservacion) && (
-                    <div className="mt-5 space-y-4 border-t border-white/10 pt-5">
-                    {riesgoTexto && (
-                      <div>
-                      <h3 className="text-xs font-medium text-slate-500">
-                        Nivel de riesgo
-                      </h3>
-                      <p className="mt-2 text-sm leading-6 text-slate-300">
-                        {riesgoTexto}
-                      </p>
-                      </div>
-                    )}
-                    {estadoConservacion && (
-                      <div>
-                      <h3 className="text-xs font-medium text-slate-500">
-                        Estado de conservación
-                      </h3>
-                      <p className="mt-2 text-sm leading-6 text-slate-300">
-                        {estadoConservacion}
-                      </p>
-                      </div>
-                    )}
-                    </div>
-                  )}
-                  </section>
+                {especie && (
+                  <TarjetaConservacion
+                    nivelRiesgo={especie.nivel_riesgo}
+                    estadoConservacion={especie.estado_conservacion}
+                    indicadores={[
+                      { nombre: "Peligrosa", valor: especie.peligrosa },
+                      { nombre: "Tóxica", valor: especie.toxica },
+                      { nombre: "Venenosa", valor: especie.venenosa },
+                      { nombre: "Protegida", valor: especie.protegida },
+                    ]}
+                    notas={especie.notas_seguridad}
+                  />
                 )}
 
                 <section className="rounded-3xl border border-white/10 bg-white/[0.025] p-6">

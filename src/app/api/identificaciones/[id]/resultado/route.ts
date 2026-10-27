@@ -7,12 +7,17 @@ import {
 } from "@/lib/identificaciones/archivo";
 import {
   esRegistro,
-  leerConfianza,
+  UMBRAL_MARGEN_MODELO_PUEBLA,
   UMBRAL_MODELO_PUEBLA,
   type AlternativaReconocimiento,
   type FichaEspecieReconocida,
   type ResultadoReconocimiento,
 } from "@/lib/identificaciones/reconocimiento";
+import {
+  aliasCatalogoModeloLocal,
+  predecirModeloLocal,
+  type EtiquetaModeloLocal,
+} from "@/lib/identificaciones/modeloLocal";
 import {
   guardarEspecieEnSupabase,
   obtenerDetallesEspecieExterna,
@@ -104,100 +109,24 @@ function crearFicha(
   };
 }
 
-async function buscarEspecieCatalogo(
+async function buscarEspecieModeloLocal(
   supabase: Awaited<ReturnType<typeof crearClienteServidor>>,
-  especieId: unknown,
-  nombreCientifico: unknown
+  etiqueta: EtiquetaModeloLocal
 ): Promise<EspecieCatalogo | null> {
-  let consulta = supabase
+  const { data, error } = await supabase
     .from("especies")
     .select(CAMPOS_ESPECIE)
-    .eq("activa", true);
-
-  if (
-    (typeof especieId === "string" && /^[1-9]\d{0,18}$/.test(especieId)) ||
-    (typeof especieId === "number" &&
-      Number.isSafeInteger(especieId) &&
-      especieId > 0)
-  ) {
-    consulta = consulta.eq("id", String(especieId));
-  } else if (
-    typeof nombreCientifico === "string" &&
-    nombreCientifico.trim().length >= 2 &&
-    nombreCientifico.trim().length <= 150
-  ) {
-    consulta = consulta.eq(
-      "nombre_cientifico",
-      nombreCientifico.trim()
-    );
-  } else {
-    return null;
-  }
-
-  const { data, error } = await consulta.maybeSingle();
+    .eq("activa", true)
+    .in("nombre_comun", [...aliasCatalogoModeloLocal(etiqueta)])
+    .limit(2);
 
   if (error) {
-    throw new Error("No se pudo consultar el catálogo de especies.");
+    throw new Error("No se pudo validar la especie del modelo local.");
   }
 
-  return data as EspecieCatalogo | null;
-}
-
-async function consultarModeloPuebla(
-  bytes: ArrayBuffer,
-  mime: string
-): Promise<Record<string, unknown> | null> {
-  const endpoint = process.env.PUEBLA_MODEL_URL?.trim();
-
-  if (!endpoint) {
-    return null;
-  }
-
-  const url = new URL(endpoint);
-
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new Error("PUEBLA_MODEL_URL debe usar HTTP o HTTPS.");
-  }
-
-  if (
-    url.hostname === "tu-servicio" ||
-    url.hostname === "example.com" ||
-    url.hostname === "localhost"
-  ) {
-    console.warn(
-      "PUEBLA_MODEL_URL todavía apunta a un host de ejemplo; se usará iNaturalist."
-    );
-    return null;
-  }
-
-  const archivo = new Blob([bytes], { type: mime });
-  const formulario = new FormData();
-  formulario.append("file", archivo, "fotografia");
-
-  const headers = new Headers();
-  const apiKey = process.env.PUEBLA_MODEL_API_KEY;
-
-  if (apiKey) {
-    headers.set("Authorization", `Bearer ${apiKey}`);
-  }
-
-  const respuesta = await fetch(url, {
-    method: "POST",
-    headers,
-    body: formulario,
-    cache: "no-store",
-    signal: AbortSignal.timeout(12000),
-  });
-
-  if (!respuesta.ok) {
-    await respuesta.body?.cancel();
-    throw new Error(
-      `El modelo de Puebla respondió con HTTP ${respuesta.status}.`
-    );
-  }
-
-  const datos: unknown = await respuesta.json();
-  return esRegistro(datos) ? datos : null;
+  return data?.length === 1
+    ? (data[0] as EspecieCatalogo)
+    : null;
 }
 
 type TaxonExterno = {
@@ -656,87 +585,96 @@ export async function POST(
     }
 
     let resultado: ResultadoReconocimiento | null = null;
+    let resultadoLocal: ResultadoReconocimiento | null = null;
 
-    if (process.env.PUEBLA_MODEL_URL) {
-      try {
-        const modelo = await consultarModeloPuebla(bytes, mime);
-        const confianza = modelo
-          ? leerConfianza(modelo.confidence)
-          : null;
+    try {
+      const prediccion = await predecirModeloLocal(bytes);
 
-        if (modelo && confianza !== null && confianza >= UMBRAL_MODELO_PUEBLA) {
-          const especie = await buscarEspecieCatalogo(
-            supabase,
-            modelo.species_id,
-            modelo.scientific_name
-          );
-
-          if (especie) {
-            const ficha = crearFicha(especie);
-            resultado = {
-              fuente: "modelo_puebla",
-              umbral_modelo_puebla: UMBRAL_MODELO_PUEBLA,
-              confianza,
-              identificada: true,
-              especie: ficha,
-              alternativas: [{ confianza, especie: ficha }],
-              mensaje: "Identificación realizada por el modelo de Puebla.",
-            };
-          }
-        }
-      } catch (errorModeloLocal) {
-        console.error(
-          "El modelo propio no pudo completar la inferencia; se usará iNaturalist:",
-          describirErrorIntegracion(errorModeloLocal)
+      if (
+        prediccion.confianza >= UMBRAL_MODELO_PUEBLA &&
+        prediccion.margen >= UMBRAL_MARGEN_MODELO_PUEBLA
+      ) {
+        const especie = await buscarEspecieModeloLocal(
+          supabase,
+          prediccion.etiqueta
         );
+
+        if (especie) {
+          const ficha = crearFicha(especie);
+          resultadoLocal = {
+            fuente: "modelo_puebla",
+            umbral_modelo_puebla: UMBRAL_MODELO_PUEBLA,
+            confianza: prediccion.confianza,
+            identificada: true,
+            especie: ficha,
+            alternativas: [
+              { confianza: prediccion.confianza, especie: ficha },
+            ],
+            mensaje: "Identificación sugerida por el modelo local.",
+          };
+        }
       }
+    } catch (errorModeloLocal) {
+      console.error(
+        "El modelo local no pudo completar la inferencia; se usará iNaturalist:",
+        describirErrorIntegracion(errorModeloLocal)
+      );
     }
 
-    if (!resultado) {
-      try {
-        const candidatos = await consultarINaturalist(
-          bytes,
-          mime
-        );
+    try {
+      const candidatos = await consultarINaturalist(bytes, mime);
+      const principal = candidatos[0];
+      const coincideConModeloLocal =
+        resultadoLocal?.especie &&
+        principal?.taxon.name ===
+          resultadoLocal.especie.nombre_cientifico;
+
+      if (coincideConModeloLocal && resultadoLocal) {
+        resultado = {
+          ...resultadoLocal,
+          mensaje:
+            "El modelo local y iNaturalist coinciden en esta identificación.",
+        };
+      } else {
         resultado = await crearResultadoExterno(
           supabase,
           supabaseServicio,
           candidatos,
           user.id
         );
-      } catch (errorExterno) {
-        console.error(
-          "No se pudo completar el reconocimiento externo:",
-          describirErrorIntegracion(errorExterno)
-        );
-
-        const { error: errorEstado } = await supabaseServicio
-          .from("identificaciones")
-          .update({
-            estado: "ERROR",
-            error_mensaje: "No se pudo completar el reconocimiento.",
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", id)
-          .eq("usuario_id", user.id);
-        if (errorEstado) {
-          console.error("No se pudo registrar el fallo del proveedor:", {
-            code: errorEstado.code,
-            message: errorEstado.message,
-            details: errorEstado.details,
-            hint: errorEstado.hint,
-          });
-        }
-
-        return responder(
-          {
-            error: errorExterno instanceof Error
-              ? `La fotografía se guardó, pero el reconocimiento falló: ${errorExterno.message}`
-              : "La fotografía se guardó, pero el servicio de reconocimiento no está disponible. Puedes reintentar el análisis.",
-          },
-          503
-        );
       }
+    } catch (errorExterno) {
+      console.error(
+        "No se pudo completar el reconocimiento externo:",
+        describirErrorIntegracion(errorExterno)
+      );
+
+      const { error: errorEstado } = await supabaseServicio
+        .from("identificaciones")
+        .update({
+          estado: "ERROR",
+          error_mensaje: "No se pudo completar el reconocimiento.",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .eq("usuario_id", user.id);
+      if (errorEstado) {
+        console.error("No se pudo registrar el fallo del proveedor:", {
+          code: errorEstado.code,
+          message: errorEstado.message,
+          details: errorEstado.details,
+          hint: errorEstado.hint,
+        });
+      }
+
+      return responder(
+        {
+          error: errorExterno instanceof Error
+            ? `La fotografía se guardó, pero el reconocimiento falló: ${errorExterno.message}`
+            : "La fotografía se guardó, pero el servicio de reconocimiento no está disponible. Puedes reintentar el análisis.",
+        },
+        503
+      );
     }
 
     const predicciones = resultado.alternativas
